@@ -712,6 +712,44 @@ bot.callbackQuery(/buy_(.+)/, async (ctx) => {
     try { await ctx.answerCallbackQuery(); } catch { }
 });
 
+// ============================================================
+// ADMIN DEBUGGING TOOLS (AUTO-KICK)
+// ============================================================
+import { exec } from "child_process";
+
+// 1. Force Expire User (Simulasi Expired)
+bot.command("forceexpire", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const email = ctx.match as string;
+    if (!email) return ctx.reply("❌ Format: /forceexpire <email>");
+
+    try {
+        await sql("UPDATE users SET expire_at = datetime('now', '-1 day'), status = 'active' WHERE email = ?", [email]);
+        await ctx.reply(`✅ User <b>${email}</b> sekarang EXPIRED (H-1).\nSiap untuk dikick.`, { parse_mode: "HTML" });
+    } catch (e: any) {
+        await ctx.reply(`❌ Error DB: ${e.message}`);
+    }
+});
+
+// 2. Run Auto-Kick Script (Trigger via Shell)
+bot.command("testkick", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    await ctx.reply("🤖 Menjalankan Auto-Kick Script... (Mohon tunggu)");
+
+    exec("npm run auto-kick", (error, stdout, stderr) => {
+        if (error) {
+            ctx.reply(`❌ Eksekusi Gagal:\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
+            return;
+        }
+
+        // Kirim sebagian output ke Telegram (karena limit karakter)
+        const output = stdout.length > 3000 ? stdout.substring(stdout.length - 3000) : stdout;
+        ctx.reply(`✅ <b>Auto-Kick Selesai!</b>\nOutput:\n<pre>${output}</pre>`, { parse_mode: "HTML" });
+    });
+});
+
 // Error handling basic
 bot.catch((err) => {
     console.error("Error di bot:", err);
