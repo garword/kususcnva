@@ -344,7 +344,8 @@ async function runPuppeteerQueue() {
 
                         input.value = targetEmail;
                         input.dispatchEvent(new Event('input', { bubbles: true }));
-                        await sleep(500);
+                        console.log('   [DEBUG] Email entered, waiting for button to enable...');
+                        await sleep(4000); // Wait for Canva to validate email and enable button
 
                         // 3. (Optional) Set Role to Student if needed
                         // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
@@ -358,6 +359,7 @@ async function runPuppeteerQueue() {
                         if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
 
                         sendBtn.click();
+                        console.log('   [DEBUG] Clicked Send button, waiting for confirmation...');
                         await sleep(2500);
 
                         // 5. Validate
