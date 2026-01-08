@@ -676,7 +676,7 @@ async function runPuppeteerQueue() {
                     }
                 }
 
-                const result = await page.evaluate(async (targetEmail) => {
+                const result = await page.evaluate(async (targetEmail: string) => {
                     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
                     try {
