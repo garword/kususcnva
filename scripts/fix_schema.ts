@@ -10,7 +10,10 @@ async function fixSchema() {
         "ALTER TABLE users ADD COLUMN referred_by INTEGER",
         "ALTER TABLE users ADD COLUMN referral_points INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN selected_product_id INTEGER DEFAULT 1",
-        "ALTER TABLE users ADD COLUMN joined_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        "ALTER TABLE users ADD COLUMN joined_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE subscriptions ADD COLUMN status TEXT DEFAULT 'active'"
     ];
 
     for (const sql of alterations) {

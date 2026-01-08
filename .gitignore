@@ -23,6 +23,7 @@ logs/
 # Cookies & Sessions (Important!)
 *.json
 !package.json
+!package-lock.json
 !tsconfig.json
 !vercel.json
 *.txt
