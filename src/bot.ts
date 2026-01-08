@@ -537,6 +537,50 @@ bot.command("broadcast", async (ctx) => {
     }
 });
 
+// DELETE EMAIL (Admin Only)
+bot.command("delete_email", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const email = ctx.match?.trim();
+    if (!email) {
+        return ctx.reply(
+            "⚠️ <b>Format Salah!</b>\n\n" +
+            "Caranya:\n" +
+            "<code>/delete_email user@example.com</code>",
+            { parse_mode: "HTML" }
+        );
+    }
+
+    try {
+        // Check if email exists
+        const userCheck = await sql("SELECT id, email, username, first_name FROM users WHERE email = ?", [email]);
+        if (userCheck.rows.length === 0) {
+            return ctx.reply(`❌ Email <code>${email}</code> tidak ditemukan di database.`, { parse_mode: "HTML" });
+        }
+
+        const user = userCheck.rows[0];
+        const userId = user.id;
+        const userName = user.username ? `@${user.username}` : user.first_name || "Unknown";
+
+        // Delete subscriptions
+        await sql("DELETE FROM subscriptions WHERE user_id = ?", [userId]);
+
+        // Clear email from user record (keep user for history)
+        await sql("UPDATE users SET email = NULL, status = 'active' WHERE id = ?", [userId]);
+
+        await ctx.reply(
+            `✅ <b>Email Berhasil Dihapus!</b>\n\n` +
+            `👤 User: ${userName} (ID: <code>${userId}</code>)\n` +
+            `📧 Email: <code>${email}</code>\n\n` +
+            `User ini sekarang bisa aktivasi lagi dengan email baru.`,
+            { parse_mode: "HTML" }
+        );
+
+    } catch (error: any) {
+        await ctx.reply(`❌ Error: ${error.message}`);
+    }
+});
+
 // ============================================================
 // MENU HANDLERS (TEXT INPUT DARI KEYBOARD)
 // ============================================================
