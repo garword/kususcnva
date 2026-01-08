@@ -63,6 +63,27 @@ async function sendSystemLog(message: string) {
     }
 }
 
+// Helper to send Photo to Telegram (using FormData)
+async function sendTelegramPhoto(chatId: string | number, photoPath: string, caption: string) {
+    if (!BOT_TOKEN) return;
+    try {
+        const formData = new FormData();
+        formData.append('chat_id', chatId.toString());
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'HTML');
+
+        const fileBuffer = fs.readFileSync(photoPath);
+        const blob = new Blob([fileBuffer]);
+        formData.append('photo', blob, 'screenshot.jpg');
+
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+    } catch (e: any) {
+        console.error("Failed to send Telegram Photo:", e.message);
+    }
+}
+
 // ============================================================================
 // PUPPETEER ACTIONS (Shared Browser Instance)
 // ============================================================================
@@ -90,10 +111,6 @@ async function runPuppeteerQueue() {
 
     if (pendingInvites.rows.length === 0 && expiredUsers.rows.length === 0) {
         console.log("✅ Queue is empty. Nothing to do.");
-        // await sendSystemLog("✅ Queue is empty. Nothing to do."); // Too spammy if frequent? User asked for all logs. Let's keep it but maybe only if there was work?
-        // Actually user said "semua data nya di krim". Empty log might be annoyance.
-        // I will logging only if there IS work, or maybe once a day?
-        // Let's stick to logging START only if there is work.
         return;
     }
 
@@ -125,6 +142,7 @@ async function runPuppeteerQueue() {
 
         const page = await browser.newPage();
         await page.setUserAgent(userAgent);
+        await page.setViewport({ width: 1280, height: 800 });
 
         const cookieObjects = cookie.split(';').map(c => {
             const [name, ...v] = c.trim().split('=');
@@ -237,23 +255,46 @@ async function runPuppeteerQueue() {
                         await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
                     }
 
-                    const inviteLog = `✅ <b>Invite Success</b>
-👤 User: ${username} (ID: <code>${userId}</code>)
-📧 Email: <code>${email}</code>
-📦 Paket: ${planName}
-📅 Limit: ${endDateStr} WIB`;
-                    await sendSystemLog(inviteLog);
+                    // CAPTURE SUCCESS SCREENSHOT & SEND
+                    const shotPath = `success_${Date.now()}.jpg`;
+                    try {
+                        await page.screenshot({ path: shotPath, quality: 60, type: 'jpeg' });
+                        const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
+                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
+                        if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+                    } catch (shotErr) {
+                        console.error("Screenshot failed:", shotErr);
+                        await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
+                    }
 
                 } else {
                     console.log(`❌ Failed: ${result.message}`);
                     failInvites++;
                     await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+
+                    // CAPTURE FAIL SCREENSHOT
+                    const errShotPath = `fail_${Date.now()}.jpg`;
+                    try {
+                        await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
+                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+                        if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
+                    } catch (shotErr) { console.error("Screenshot failed:", shotErr); }
                 }
 
             } catch (e: any) {
                 console.error(e);
                 failInvites++;
-                await sendSystemLog(`❌ <b>Invite Error</b>\nEmail: ${email}\nError: ${e.message}`);
+
+                // CAPTURE ERROR SCREENSHOT
+                const errShotPath = `error_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
+                    if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
+                } catch (shotErr) {
+                    console.error("Screenshot failed:", shotErr);
+                    await sendSystemLog(`❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
+                }
             }
         }
 
@@ -308,11 +349,7 @@ async function runPuppeteerQueue() {
                         await sendTelegram(userId, `⚠️ <b>Langganan Berakhir</b>\nAkses Canva Pro Anda telah berakhir pada ${endDate}.`);
                     }
 
-                    const kickLog = `🦶 <b>User Kicked</b>
-👤 User: ${username} (ID: <code>${userId}</code>)
-📧 Email: <code>${email}</code>
-📦 Paket: ${planName}
-📅 Limit: ${endDate} WIB`;
+                    const kickLog = `🦶 <b>User Kicked</b>\n👤 User: ${username} (ID: <code>${userId}</code>)\n📧 Email: <code>${email}</code>\n📦 Paket: ${planName}`;
                     await sendSystemLog(kickLog);
 
                 } else {
