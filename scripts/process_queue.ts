@@ -417,6 +417,26 @@ async function runPuppeteerQueue() {
                 await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
                 await new Promise(r => setTimeout(r, 2000));
 
+                // 0. Extract Member Count (Monitoring 500 Limit)
+                const teamMemberCount = await page.evaluate(() => {
+                    const h1 = Array.from(document.querySelectorAll('h1')).find(el => el.textContent?.includes('People') || el.textContent?.includes('Anggota'));
+                    if (h1) {
+                        const match = h1.textContent?.match(/\((\d+)\)/);
+                        return match ? parseInt(match[1]) : 0;
+                    }
+                    return 0;
+                });
+
+                if (teamMemberCount > 0) {
+                    console.log(`📊 Team Slots: ${teamMemberCount}/500`);
+                    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_members_count', ?)", [teamMemberCount.toString()]);
+
+                    if (teamMemberCount >= 500) {
+                        console.error("⚠️ TEAM FULL! Slots reached 500/500.");
+                        await sendSystemLog(`⚠️ <b>TEAM FULL WARNING!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
+                    }
+                }
+
                 const result = await page.evaluate(async (targetEmail) => {
                     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
