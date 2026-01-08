@@ -255,31 +255,47 @@ async function runPuppeteerQueue() {
                     };
 
                     try {
-                        // 1. Check for 'Invite people' button
-                        let inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
-                            findByText('span', 'Undang orang') || findByText('button', 'Undang orang');
+                        // DEBUG: Screenshot page before doing anything
+                        // We can't take screenshot inside evaluate directly easily without exposing function, 
+                        // so we do it outside if possible, but here we are inside evaluate.
+                        // Actually, we can return a specific status to trigger screenshot outside, but for now let's rely on finding robustly.
 
-                        // FALLBACK: If not found, maybe we are on the wrong tab. Click "People" / "Anggota" in sidebar.
+                        // 1. Check for 'Invite people' button
+                        // Search in button, span, div, a
+                        // Also check aria-label which is often better.
+                        const findByAria = (labelPart: string) => {
+                            return Array.from(document.querySelectorAll(`[aria-label*="${labelPart}" i]`))
+                                .map(el => el as HTMLElement)
+                                .find(el => el.offsetParent !== null);
+                        }
+
+                        let inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
+                            findByText('span', 'Undang orang') || findByText('button', 'Undang orang') ||
+                            findByText('div', 'Invite people') || findByText('a', 'Invite people') ||
+                            findByAria("Invite people") || findByAria("Undang orang") || findByAria("Invite members");
+
+                        // FALLBACK: If not found, look for sidebar 
                         if (!inviteBtn) {
+                            // ... existing sidebar logic ...
                             const peopleTab = findByText('span', 'People') || findByText('p', 'People') ||
                                 findByText('span', 'Anggota') || findByText('p', 'Anggota') ||
                                 findByText('span', 'Tim') || findByText('p', 'Tim');
 
                             if (peopleTab) {
                                 peopleTab.click();
-                                await sleep(3000); // Wait for tab switch
-                                // Search again
+                                await sleep(3000);
                                 inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
                                     findByText('span', 'Undang orang') || findByText('button', 'Undang orang');
                             }
                         }
 
-                        if (!inviteBtn) return { success: false, message: "Invite button not found (Tried: Invite people/Undang orang & Sidebar)" };
-                        inviteBtn.click();
-                        await sleep(1500);
+                        if (!inviteBtn) return { success: false, message: "Invite button not found (Tried: Text & Aria)" };
 
-                        // 2. Fill Email
-                        // Log says: TAG: INPUT, ARIA: "Enter email for person 1"
+                        // Click and Wait for Popup
+                        inviteBtn.click();
+                        await sleep(4000); // Popup animation might be slow
+
+                        // 2. Fill Email (Look for input visible in popup)
                         let input = document.querySelector('input[aria-label="Enter email for person 1"], input[aria-label*="email"], input[type="email"]') as HTMLInputElement;
                         if (!input) {
                             // Fallback to placeholder
