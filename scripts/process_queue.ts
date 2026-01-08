@@ -276,16 +276,25 @@ async function runPuppeteerQueue() {
                 let result = { success: false, message: "" };
 
                 try {
-                    // 1. Find and click "Invite people" button using XPath
+                    // 1. Find and click "Invite people" button using XPath (via page.evaluate)
                     console.log('   [DEBUG] Looking for Invite people button...');
-                    const inviteButtons = await (page as any).$x("//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]");
 
-                    if (inviteButtons.length === 0) {
+                    const inviteButtonFound = await page.evaluate(() => {
+                        const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
+                        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        const button = result.singleNodeValue as HTMLElement;
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                        return false;
+                    });
+
+                    if (!inviteButtonFound) {
                         throw new Error("Invite people button not found");
                     }
 
                     console.log('   [DEBUG] Clicking Invite button...');
-                    await inviteButtons[0].click();
                     await new Promise(r => setTimeout(r, 2000)); // Wait for popup animation
 
                     // 2. Wait for and find email input
@@ -317,21 +326,38 @@ async function runPuppeteerQueue() {
                     const maxWait = 30; // 30 attempts = 15 seconds max
 
                     while (!buttonEnabled && waitAttempts < maxWait) {
-                        const sendButtons = await (page as any).$x("//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button");
+                        const buttonState = await page.evaluate(() => {
+                            const xpath = "//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button";
+                            const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                            const button = result.singleNodeValue as HTMLButtonElement;
 
-                        if (sendButtons.length > 0) {
-                            const ariaDisabled = await sendButtons[0].evaluate((el: any) => el.getAttribute('aria-disabled'));
-                            const isDisabled = await sendButtons[0].evaluate((el: any) => (el as HTMLButtonElement).disabled);
+                            if (button) {
+                                return {
+                                    found: true,
+                                    ariaDisabled: button.getAttribute('aria-disabled'),
+                                    disabled: button.disabled,
+                                    button: button  // Return reference for clicking
+                                };
+                            }
+                            return { found: false, ariaDisabled: null, disabled: null, button: null };
+                        });
 
-                            buttonEnabled = ariaDisabled !== 'true' && !isDisabled;
+                        if (buttonState.found) {
+                            buttonEnabled = buttonState.ariaDisabled !== 'true' && !buttonState.disabled;
 
                             if (waitAttempts % 5 === 0) { // Log every 5 attempts (2.5 seconds)
-                                console.log(`   [DEBUG] Attempt ${waitAttempts}/${maxWait} - aria-disabled: ${ariaDisabled}, disabled: ${isDisabled}`);
+                                console.log(`   [DEBUG] Attempt ${waitAttempts}/${maxWait} - aria-disabled: ${buttonState.ariaDisabled}, disabled: ${buttonState.disabled}`);
                             }
 
                             if (buttonEnabled) {
                                 console.log('   [DEBUG] Button enabled! Clicking Send...');
-                                await sendButtons[0].click();
+                                // Click the button
+                                await page.evaluate(() => {
+                                    const xpath = "//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button";
+                                    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                                    const button = result.singleNodeValue as HTMLButtonElement;
+                                    if (button) button.click();
+                                });
                                 break;
                             }
                         }
@@ -349,11 +375,15 @@ async function runPuppeteerQueue() {
                     await new Promise(r => setTimeout(r, 3000));
 
                     // Check for success notification
-                    const successNotifications = await (page as any).$x("//*[contains(text(), 'Invitation sent to') or contains(text(), 'Undangan terkirim')]");
+                    const successFound = await page.evaluate(() => {
+                        const xpath = "//*[contains(text(), 'Invitation sent to') or contains(text(), 'Undangan terkirim')]";
+                        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                        return !!result.singleNodeValue;
+                    });
 
                     result = {
-                        success: successNotifications.length > 0,
-                        message: successNotifications.length > 0 ? "Invited" : "No success notification found"
+                        success: successFound,
+                        message: successFound ? "Invited" : "No success notification found"
                     };
 
                     console.log(`   [DEBUG] Result: ${result.success ? '✅ Success' : '❌ Failed'} - ${result.message}`);
