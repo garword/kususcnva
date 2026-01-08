@@ -412,33 +412,71 @@ async function runPuppeteerQueue() {
             console.log(`🦶 Processing Kick: ${email}`);
 
             try {
-                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/team';
+                // Fix: Default to /settings/people for finding the user
+                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
                 await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
                 await new Promise(r => setTimeout(r, 2000));
 
                 const result = await page.evaluate(async (targetEmail) => {
                     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
                     try {
-                        const allElements = Array.from(document.querySelectorAll('*'));
-                        const userEl = allElements.find(el => el.textContent === targetEmail);
-                        if (!userEl) return { success: false, message: "User not found" };
+                        const findByText = (tag: string, text: string) => Array.from(document.querySelectorAll(tag)).find(el => el.textContent?.toLowerCase().includes(text.toLowerCase())) as HTMLElement;
 
-                        let row = userEl.parentElement;
-                        while (row && row.tagName !== 'TR' && !row.className.includes('row')) {
+                        // 1. Find the User Row
+                        // Strategy: Find element with email text, then go up to TR or row div
+                        const allElements = Array.from(document.querySelectorAll('div, span, td'));
+                        const emailEl = allElements.find(el => el.textContent?.trim() === targetEmail);
+
+                        if (!emailEl) return { success: false, message: "User Email not found in list" };
+
+                        let row = emailEl.parentElement;
+                        // Find a parent that looks like a row (contains checkboxes)
+                        while (row && row.tagName !== 'TR' && !row.querySelector('input[type="checkbox"]')) {
                             row = row.parentElement;
-                            if (!row) break;
+                            if (!row || row === document.body) break;
                         }
-                        if (!row) return { success: false, message: "Row not found" };
 
-                        const btn = row.querySelector('button[aria-label*="Remove"], button[aria-label*="Delete"]') as HTMLElement;
-                        if (btn) {
-                            btn.click();
-                            await sleep(1000);
-                            const confirmBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.match(/remove|confirm|hapus/i)) as HTMLElement;
-                            if (confirmBtn) confirmBtn.click();
-                            return { success: true };
+                        if (!row) return { success: false, message: "Row container not found" };
+
+                        // 2. Click Checkbox
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        if (!checkbox) return { success: false, message: "Checkbox not found in row" };
+
+                        (checkbox as HTMLElement).click();
+                        await sleep(1000);
+
+                        // 3. Find Delete Icon (Trash Can) - Usually appears in a bottom bar or top action bar
+                        // Look for button with aria-label remove/delete or svg with specific path? 
+                        // Let's try aria-label first based on user description "icon hapus".
+                        // It might be a button with aria-label="Remove" or "Delete" or "Hapus"
+                        let deleteBtn = document.querySelector('button[aria-label*="Remove" i]') ||
+                            document.querySelector('button[aria-label*="Delete" i]') ||
+                            document.querySelector('button[aria-label*="Hapus" i]');
+
+                        if (!deleteBtn) {
+                            // Fallback: look for button containing SVG of trash can (hard to detect via text).
+                            // User said "icon hapus".
+                            return { success: false, message: "Delete/Trash button not found after checking" };
                         }
-                        return { success: false, message: "Button not found" };
+
+                        (deleteBtn as HTMLElement).click();
+                        await sleep(1500); // Wait for popup
+
+                        // 4. Confirm Popup "Remove from team"
+                        // Look for the RED button
+                        const confirmBtn = findByText('button', 'Remove from team') ||
+                            findByText('button', 'Hapus dari tim') ||
+                            document.querySelector('button[kind="destructive"]') || // Canva often uses this attribute
+                            document.querySelector('button[class*="danger"]');
+
+                        if (!confirmBtn) return { success: false, message: "Confirm Remove button not found in popup" };
+
+                        (confirmBtn as HTMLElement).click();
+                        await sleep(2000);
+
+                        return { success: true };
+
                     } catch (e: any) { return { success: false, message: e.message }; }
                 }, email);
 
