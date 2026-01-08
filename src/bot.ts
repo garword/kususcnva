@@ -138,7 +138,14 @@ bot.command("start", async (ctx) => {
 
     // 4. Proses Referral (HANYA JIKA USER BARU)
     const payload = ctx.match;
+
+    // Debug Log untuk User
+    if (payload && !isNewUser) {
+        console.log(`[REFERRAL] Skip: User ${userId} (${firstName}) sudah ada di database.`);
+    }
+
     if (isNewUser && payload && payload !== user.referral_code) {
+        console.log(`[REFERRAL] Valid: User baru ${userId} dengan kode ${payload}`);
         // Cari Referrer
         const uplineRes = await sql("SELECT id, referral_points FROM users WHERE referral_code = ?", [payload]);
         if (uplineRes.rows.length > 0) {
