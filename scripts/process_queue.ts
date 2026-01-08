@@ -405,7 +405,23 @@ async function runPuppeteerQueue() {
                         }
 
                         if (!buttonEnabled) {
-                            return { success: false, message: "Send button did not enable after typing email" };
+                            // Get the last checked button for diagnostics
+                            const lastBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
+                                findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
+
+                            return {
+                                success: false,
+                                message: "Send button did not enable after typing email",
+                                debug: {
+                                    buttonFound: !!lastBtn,
+                                    checked: waitAttempts,
+                                    lastButtonState: lastBtn?.closest('button') ? {
+                                        disabled: (lastBtn.closest('button') as HTMLButtonElement).disabled,
+                                        ariaDisabled: (lastBtn.closest('button') as HTMLButtonElement).getAttribute('aria-disabled'),
+                                        className: (lastBtn.closest('button') as HTMLButtonElement).className
+                                    } : null
+                                }
+                            };
                         }
 
                         // 5. Click 'Send invitations'
@@ -415,7 +431,7 @@ async function runPuppeteerQueue() {
                         if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
 
                         sendBtn.click();
-                        console.log('   [DEBUG] Clicked Send button, waiting for confirmation...');
+                        console.log('   [DEBUG]  Clicked Send button, waiting for confirmation...');
                         await sleep(2500);
 
                         // 5. Validate
@@ -474,6 +490,22 @@ async function runPuppeteerQueue() {
 
                 } else {
                     console.log(`❌ Failed: ${result.message}`);
+
+                    // Log diagnostic info if available
+                    if ((result as any).debug) {
+                        const debug = (result as any).debug;
+                        console.log(`   [DIAGNOSTIC INFO]:`);
+                        console.log(`      - Button found: ${debug.buttonFound}`);
+                        console.log(`      - Checks performed: ${debug.checked}/20`);
+                        if (debug.lastButtonState) {
+                            console.log(`      - Button disabled prop: ${debug.lastButtonState.disabled}`);
+                            console.log(`      - Button aria-disabled: ${debug.lastButtonState.ariaDisabled}`);
+                            console.log(`      - Button className: ${debug.lastButtonState.className}`);
+                        } else {
+                            console.log(`      - Button element not found in DOM`);
+                        }
+                    }
+
                     failInvites++;
                     await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
 
