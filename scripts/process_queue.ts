@@ -254,6 +254,56 @@ async function runPuppeteerQueue() {
             'Upgrade-Insecure-Requests': '1'
         });
 
+        // 🧠 HUMAN-LIKE BEHAVIOR HELPERS
+        const randomDelay = (min: number, max: number) =>
+            new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
+
+        const humanType = async (element: any, text: string) => {
+            await element.click();
+            await randomDelay(300, 600); // Think before typing
+
+            for (const char of text) {
+                await page.keyboard.type(char, {
+                    delay: Math.random() * 150 + 50 // 50-200ms per char (realistic)
+                });
+
+                // Random micro-pauses (like humans thinking)
+                if (Math.random() < 0.15) { // 15% chance of pause
+                    await randomDelay(200, 500);
+                }
+            }
+        };
+
+        const humanClick = async (selector: string) => {
+            const element = await page.$(selector);
+            if (element) {
+                // Move mouse to element first (hover)
+                const box = await element.boundingBox();
+                if (box) {
+                    await page.mouse.move(
+                        box.x + box.width / 2 + (Math.random() * 10 - 5), // Random offset
+                        box.y + box.height / 2 + (Math.random() * 10 - 5)
+                    );
+                    await randomDelay(100, 300); // Hover pause
+                }
+                await element.click();
+                await randomDelay(200, 500); // Post-click pause
+                return true;
+            }
+            return false;
+        };
+
+        const randomScroll = async () => {
+            // Occasional random scrolls (humans browse naturally)
+            await page.evaluate(() => {
+                window.scrollBy({
+                    top: Math.random() * 200 - 100,
+                    behavior: 'smooth'
+                });
+            });
+            await randomDelay(500, 1000);
+        };
+
         // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
@@ -262,10 +312,16 @@ async function runPuppeteerQueue() {
             console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
+            // Random initial idle (like human arriving at page)
+            await randomDelay(1500, 3000);
+
             try {
                 // STEP 1: Click "Continue with email" button
                 console.log("   [1/5] Looking for 'Continue with email' button...");
-                await new Promise(r => setTimeout(r, 2000)); // Wait for page to stabilize
+                await randomDelay(1000, 2000); // Human reads the page
+
+                // Occasional scroll to mimic browsing
+                if (Math.random() < 0.3) await randomScroll();
 
                 const continueWithEmailBtn = await page.evaluate(() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
@@ -281,20 +337,18 @@ async function runPuppeteerQueue() {
                     console.log("   'Continue with email' button not found, might be direct email form");
                 }
 
-                await new Promise(r => setTimeout(r, 1500));
+                await randomDelay(1200, 2500); // Wait for form transition
 
-                // STEP 2: Enter Email
+                // STEP 2: Enter Email (HUMAN-LIKE TYPING)
                 console.log("   [2/5] Entering Email...");
                 const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 });
                 if (emailInput) {
-                    await emailInput.click();
-                    await new Promise(r => setTimeout(r, 500));
-                    await page.keyboard.type(canvaEmail, { delay: 80 });
+                    await humanType(emailInput, canvaEmail); // Use human typing!
                 }
 
                 // STEP 3: Click "Continue" button (span with text "Continue")
                 console.log("   [3/5] Clicking Continue...");
-                await new Promise(r => setTimeout(r, 1000));
+                await randomDelay(800, 1500); // Think before clicking
 
                 const continueClicked = await page.evaluate(() => {
                     const spans = Array.from(document.querySelectorAll('span'));
@@ -316,19 +370,18 @@ async function runPuppeteerQueue() {
 
                 // STEP 4: Wait for Password Field & Enter Password
                 console.log("   [4/5] Waiting for password field...");
-                await new Promise(r => setTimeout(r, 2000)); // Wait for transition
+                await randomDelay(2000, 3500); // Loading transition
 
                 const passInput = await page.waitForSelector('input[type="password"], input.bCVoGQ', { timeout: 10000 });
                 if (passInput) {
                     console.log("   [4/5] Entering Password...");
-                    await passInput.click();
-                    await new Promise(r => setTimeout(r, 500));
-                    await page.keyboard.type(canvaPassword, { delay: 80 });
+                    await randomDelay(500, 1000); // Pause before typing password
+                    await humanType(passInput, canvaPassword); // Human typing!
                 }
 
                 // STEP 5: Click "Log in" button (span with text "Log in")
                 console.log("   [5/5] Clicking Log in...");
-                await new Promise(r => setTimeout(r, 1000));
+                await randomDelay(1000, 2000); // Think before final click
 
                 const loginClicked = await page.evaluate(() => {
                     const spans = Array.from(document.querySelectorAll('span'));
@@ -351,6 +404,9 @@ async function runPuppeteerQueue() {
                 await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
                 console.log("   ✅ Login Submitted. checking access...");
 
+                // Human pause after login
+                await randomDelay(2000, 4000);
+
                 // CAPTURE LOGIN SUCCESS SCREENSHOT
                 const loginShotPath = `login_success_${Date.now()}.jpg`;
                 try {
@@ -359,7 +415,7 @@ async function runPuppeteerQueue() {
                     if (fs.existsSync(loginShotPath)) fs.unlinkSync(loginShotPath);
                 } catch (e) { console.error("Snapshot failed", e); }
 
-                await new Promise(r => setTimeout(r, 3000)); // Allow redirect
+                await randomDelay(2000, 3000); // Allow redirect
 
             } catch (loginErr: any) {
                 console.error("❌ Login Failed:", loginErr);
@@ -426,13 +482,17 @@ async function runPuppeteerQueue() {
                     console.log(`   [DEBUG] Screenshot saved: ${debugShot}`);
                 } catch (e) { console.log('   [DEBUG] Screenshot failed'); }
 
-                // NATIVE PUPPETEER INVITE FLOW (More Reliable)
+                // NATIVE PUPPETEER INVITE FLOW (More Reliable + HUMAN-LIKE)
                 console.log('   [DEBUG] Starting native Puppeteer invite flow...');
                 let result = { success: false, message: "" };
 
+                // Human pause before starting
+                await randomDelay(1000, 2000);
+
                 try {
-                    // 1. Find and click "Invite people" button using XPath (via page.evaluate)
+                    // 1. Find and click "Invite people" button
                     console.log('   [DEBUG] Looking for Invite people button...');
+                    await randomDelay(500, 1000); // Look around
 
                     const inviteButtonFound = await page.evaluate(() => {
                         const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
@@ -450,29 +510,25 @@ async function runPuppeteerQueue() {
                     }
 
                     console.log('   [DEBUG] Clicking Invite button...');
-                    await new Promise(r => setTimeout(r, 2000)); // Wait for popup animation
+                    await randomDelay(1500, 2500); // Wait for popup animation (human-like)
 
                     // 2. Wait for and find email input
                     console.log('   [DEBUG] Waiting for email input to appear...');
-                    await new Promise(r => setTimeout(r, 1000));
+                    await randomDelay(800, 1500);
 
                     const emailInput = await page.$('input[aria-label="Enter email for person 1"]');
                     if (!emailInput) {
                         throw new Error("Email input not found in popup");
                     }
 
-                    // 3. Type email using native Puppeteer typing
-                    console.log('   [DEBUG] Typing email with native Puppeteer...');
-                    await emailInput.click(); // Focus the input
-                    await new Promise(r => setTimeout(r, 500));
-
-                    // Use page.keyboard.type for most realistic typing
-                    await page.keyboard.type(email, { delay: 80 }); // 80ms delay between keystrokes
+                    // 3. Type email using HUMAN TYPING
+                    console.log('   [DEBUG] Typing email with human-like behavior...');
+                    await humanType(emailInput, email); // Natural typing with pauses!
 
                     // 4. Trigger blur to start validation
                     console.log('   [DEBUG] Triggering validation...');
                     await page.keyboard.press('Tab'); // Move focus away
-                    await new Promise(r => setTimeout(r, 2000)); // Initial wait for validation to start
+                    await randomDelay(1500, 2500); // Initial wait for validation to start
 
                     // 5. Wait for Send button to become enabled
                     console.log('   [DEBUG] Waiting for Send button to enable...');
