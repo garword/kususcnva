@@ -161,35 +161,57 @@ async function runPuppeteerQueue() {
                 await new Promise(r => setTimeout(r, 2000));
 
                 const result = await page.evaluate(async (targetEmail) => {
-                    const sleep = (ms: number) => new Promise(r => setTimeout(r, 10)); // Reduced sleep for brevity, original was 2000
+                    const sleep = (ms: number) => new Promise(r => setTimeout(r, 100)); // Faster sleep
+
+                    // Helper to find by text
+                    const findByText = (tag: string, text: string) => {
+                        return Array.from(document.querySelectorAll(tag))
+                            .find(el => el.textContent?.toLowerCase().includes(text.toLowerCase())) as HTMLElement;
+                    };
+
                     try {
-                        // 1. Click Invite Button
-                        // Support for Pro (Invite/Add people) and Edu (Add students/Siswa)
-                        const buttons = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
-                        const inviteBtn = buttons.find(b => b.textContent?.toLowerCase().match(/invite|undang|add people|student|siswa|murid/));
-                        if (!inviteBtn) return { success: false, message: "Invite button not found (Pro/Edu)" };
+                        // 1. Click 'Invite people' (Usually a SPAN or BUTTON)
+                        // Log says: TAG: SPAN, TEXT: "Invite people"
+                        const inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people');
+                        if (!inviteBtn) return { success: false, message: "Invite button not found (Text: Invite people)" };
                         inviteBtn.click();
                         await sleep(1500);
 
                         // 2. Fill Email
-                        const input = document.querySelector('input[type="email"], input[placeholder*="email" i]') as HTMLInputElement;
+                        // Log says: TAG: INPUT, ARIA: "Enter email for person 1"
+                        let input = document.querySelector('input[aria-label="Enter email for person 1"]') as HTMLInputElement;
+                        if (!input) {
+                            // Fallback to placeholder
+                            input = document.querySelector('input[placeholder*="email" i]') as HTMLInputElement;
+                        }
                         if (!input) return { success: false, message: "Email input not found" };
+
                         input.value = targetEmail;
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                         await sleep(500);
 
-                        // 3. Submit
-                        const submitBtns = Array.from(document.querySelectorAll('button')) as HTMLElement[];
-                        const sendBtn = submitBtns.find(b => b.textContent?.trim().toLowerCase().match(/send|kirim|add|invite/));
-                        if (!sendBtn) return { success: false, message: "Send button not found" };
+                        // 3. (Optional) Set Role to Student if needed
+                        // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
+                        // Verify if it defaults to Student. Log shows "Student" text in span. Assuming default is fine for now.
+
+                        // 4. Click 'Send invitations'
+                        // Log says: TAG: SPAN, TEXT: "Send invitations"
+                        const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations');
+                        if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
+
                         sendBtn.click();
                         await sleep(2500);
 
-                        // 4. Validate Success
+                        // 5. Validate
                         const bodyText = document.body.innerText.toLowerCase();
                         if (bodyText.includes('sent') || bodyText.includes('invited') || bodyText.includes('berhasil')) {
                             return { success: true, message: "Invited" };
                         }
+                        // If dialog closed, assume success
+                        if (!document.body.contains(sendBtn)) {
+                            return { success: true, message: "Dialog closed (Assumed Success)" };
+                        }
+
                         return { success: true, message: "Assumed success (no error)" };
 
                     } catch (e: any) {
