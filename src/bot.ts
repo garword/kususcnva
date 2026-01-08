@@ -725,7 +725,15 @@ bot.command("forceexpire", async (ctx) => {
     if (!email) return ctx.reply("❌ Format: /forceexpire <email>");
 
     try {
-        await sql("UPDATE users SET expire_at = datetime('now', '-1 day'), status = 'active' WHERE email = ?", [email]);
+        // Cari ID user dulu berdasarkan email
+        const userRes = await sql("SELECT id FROM users WHERE email = ?", [email]);
+        if (userRes.rows.length === 0) return ctx.reply("❌ User tidak ditemukan di DB.");
+
+        const userId = userRes.rows[0].id;
+
+        // Update Subscription jadi Expired (H-1)
+        await sql("UPDATE subscriptions SET end_date = datetime('now', '-1 day'), status = 'active' WHERE user_id = ?", [userId]);
+
         await ctx.reply(`✅ User <b>${email}</b> sekarang EXPIRED (H-1).\nSiap untuk dikick.`, { parse_mode: "HTML" });
     } catch (e: any) {
         await ctx.reply(`❌ Error DB: ${e.message}`);

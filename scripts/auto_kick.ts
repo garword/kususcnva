@@ -68,8 +68,15 @@ async function humanType(element: any, text: string) {
 async function kickExpiredUsers() {
     console.log("🤖 Auto-Kick Job Started (v2.0 - Stealth Mode)...");
 
-    // 1. Get Expired Users
-    const expiredUsers = await sql(`SELECT * FROM users WHERE expire_at < datetime('now') AND status = 'active'`);
+    // 1. Get Expired Users (Expiry is in subscriptions table)
+    const expiredUsers = await sql(`
+        SELECT u.email, u.id, s.id as sub_id 
+        FROM users u 
+        JOIN subscriptions s ON u.id = s.user_id 
+        WHERE s.end_date < datetime('now') 
+        AND s.status = 'active'
+    `);
+
     if (expiredUsers.rows.length === 0) {
         console.log("✅ No expired users found.");
         return;
@@ -226,7 +233,9 @@ async function kickExpiredUsers() {
                     kickedCount++;
 
                     // Update DB
-                    await sql("UPDATE users SET status = 'kicked', kicked_at = datetime('now') WHERE id = ?", [user.id]);
+                    // Update DB
+                    await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
+                    await sql("UPDATE subscriptions SET status = 'kicked' WHERE id = ?", [user.sub_id]);
                     await sendTelegram(`🚫 <b>User Kicked</b>\nEmail: ${targetEmail}\nReason: Expired`);
                 } else {
                     throw new Error("Confirm button not found");
