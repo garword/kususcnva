@@ -310,12 +310,15 @@ async function runPuppeteerQueue() {
                     if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
                 } catch (e) { console.error("Screenshot failed", e); }
 
-                // Fallback to cookie
-                console.log("⚠️ Falling back to Cookie if available...");
+                // DISABLED COOKIE FALLBACK - Force Email/Password Login Only
+                throw new Error("Email/Password login required. Cookie fallback disabled.");
             }
+        } else {
+            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env");
         }
 
-        // Always try to load cookie as backup/supplement if login didn't fully establish session or skipped
+        // COOKIE LOADING DISABLED - Using Fresh Login Only
+        /*
         if (cookie) {
             console.log("🍪 Loading Backup Cookies...");
             const cookieObjects = cookie.split(';').map(c => {
@@ -324,6 +327,7 @@ async function runPuppeteerQueue() {
             }).filter(c => c.name && c.value);
             await page.setCookie(...cookieObjects);
         }
+        */
 
         let successInvites = 0;
         let failInvites = 0;
