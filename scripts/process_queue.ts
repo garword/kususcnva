@@ -159,6 +159,7 @@ async function runPuppeteerQueue() {
             defaultViewport: null,
             ignoreDefaultArgs: ['--enable-automation'],
             args: [
+                '--incognito', // 🕵️‍♂️ Enable Incognito Mode
                 '--start-maximized',
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -170,7 +171,9 @@ async function runPuppeteerQueue() {
             ]
         });
 
-        const page = await browser.newPage();
+        // Use Incognito Context
+        const context = await browser.createBrowserContext();
+        const page = await context.newPage();
 
         // 🛡️ ANTI-DETECTION: Inject realistic browser fingerprint
         await page.evaluateOnNewDocument(() => {
