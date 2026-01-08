@@ -161,12 +161,10 @@ async function runPuppeteerQueue() {
             args: [
                 '--incognito', // 🕵️‍♂️ Enable Incognito Mode
                 '--start-maximized',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
+                // '--no-sandbox', // REMOVED: Triggers "unsupported flag" warning
+                // '--disable-setuid-sandbox', // REMOVED: Triggers "unsupported flag" warning
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
-                '--disable-dev-shm-usage',
-                '--disable-web-security',
                 '--disable-features=IsolateOrigins,site-per-process'
             ]
         });
