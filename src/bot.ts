@@ -3,6 +3,7 @@ import { sql } from "../lib/db";
 import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
 import axios from "axios";
+import { exec } from "child_process";
 
 dotenv.config();
 
@@ -653,23 +654,68 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
     const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
 
+    // ADMIN PANEL SUPER MENU
     const adminKeyboard = new InlineKeyboard()
-        .text("🚀 Test Auto-Invite", "test_invite").row()
-        .text("🦶 Test Auto-Kick", "test_kick");
+        .text("⚙️ Cek Team ID", "adm_team_id").text("🍪 Status Cookie", "adm_cookie").row()
+        .text("📢 Broadcast", "adm_help_bc").text("🗑️ Hapus User", "adm_help_del").row()
+        .text("💀 Force Expire", "adm_help_exp").text("📋 List Channel", "adm_list_ch").row()
+        .text("🚀 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick");
 
     await ctx.reply(
-        `<b>Panel Admin</b>\n\n` +
+        `<b>Panel Admin Super</b>\n\n` +
         `🆔 Team ID: <code>${teamId}</code>\n` +
-        `📊 Status Slot: ${slotInfo}\n` +
-        `\nGunakan perintah:\n` +
-        `/set_team_id - Set ID Tim\n` +
-        `/set_cookie - Update Cookie\n` +
-        `/help_cookie - Tutorial Cookie`,
+        `📊 Status Slot: ${slotInfo}\n\n` +
+        `Silakan pilih menu di bawah untuk aksi cepat atau panduan command.`,
         {
             parse_mode: "HTML",
             reply_markup: adminKeyboard
         }
     );
+});
+
+// CALLBACK HANDLERS FOR ADMIN MENU
+
+// 1. Cek Settings
+bot.callbackQuery("adm_team_id", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
+    const val = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
+    await ctx.reply(`🆔 <b>Team ID Saat Ini:</b>\n<code>${val}</code>\n\nCara ubah: <code>/set_team_id [ID_BARU]</code>`, { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_cookie", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+    const val = cookieRes.rows.length > 0 ? "✅ Tersimpan" : "❌ Kosong";
+    await ctx.reply(`🍪 <b>Status Cookie:</b> ${val}\n\nCara ubah: Kirim file JSON cookie dengan caption <code>/set_cookie</code> atau ketik <code>/set_cookie [VALUE]</code>`, { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+// 2. Help Guides
+bot.callbackQuery("adm_help_bc", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("📢 <b>Format Broadcast:</b>\n\nKetik: <code>/broadcast [Pesan Anda]</code>\nAtau reply gambar dengan command tersebut.", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_help_del", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("🗑️ <b>Hapus Email User:</b>\n\nKetik: <code>/delete_email user@gmail.com</code>\n(User akan kembali ke status pending tanpa email)", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_help_exp", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("💀 <b>Force Expire User (Testing):</b>\n\nKetik: <code>/forceexpire user@gmail.com</code>\n(User akan dibuat expired H-1 agar kena auto-kick)", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_list_ch", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const channels = await getForceSubChannels();
+    await ctx.reply(`📋 <b>Channel Wajib Join:</b>\n${channels.join('\n')}\n\nUbah: <code>/set_channels @ch1, @ch2</code>`, { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
 });
 
 // Callback: Test Actions
@@ -753,7 +799,7 @@ bot.callbackQuery(/buy_(.+)/, async (ctx) => {
 // ============================================================
 // ADMIN DEBUGGING TOOLS (AUTO-KICK)
 // ============================================================
-import { exec } from "child_process";
+
 
 // 1. Force Expire User (Simulasi Expired)
 bot.command("forceexpire", async (ctx) => {
