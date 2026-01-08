@@ -58,23 +58,23 @@ async function getForceSubChannels(): Promise<string[]> {
 
 // Helper: Cek Membership
 async function checkMember(userId: number, ctx: MyContext): Promise<boolean> {
-    const channels = await getForceSubChannels();
-    if (channels.length === 0) return true;
+    const rawChannels = await getForceSubChannels();
+    if (rawChannels.length === 0) return true;
 
-    for (const chat of channels) {
+    for (const raw of rawChannels) {
+        // Support format: ID|Link or just ID
+        // Example: "-1001234567|https://t.me/+AbCdEf" -> ID: -1001234567
+        const chat = raw.split('|')[0].trim();
+
         try {
-            // Support @username or ID (jika bot admin)
+            // Support @username or ID
             const member = await ctx.api.getChatMember(chat, userId);
             if (member.status === 'left' || member.status === 'kicked') {
                 return false;
             }
         } catch (e) {
             console.error(`Gagal cek member ${chat}:`, e);
-            // Jika error (misal bot bukan admin), kita asumsikan FALSE agar admin sadar harus fix
-            // Atau TRUE agar user tidak terblokir? 
-            // Better FALSE + Log, karena ini fitur "Wajib Join".
-            // Tapi kalau salah config, user macet. 
-            // Kita return FALSE.
+            // Default: Asumsikan FALSE jika error (mungkin user belum join private channel)
             return false;
         }
     }
@@ -86,7 +86,7 @@ bot.command("set_channels", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
     const input = ctx.match;
     if (!input) {
-        return ctx.reply("⚠️ <b>Format Salah!</b>\nContoh: <code>/set_channels @channel1, @channel2</code>\n\nTips: Pisahkan dengan koma.", { parse_mode: "HTML" });
+        return ctx.reply("⚠️ <b>Format Salah!</b>\nContoh:\n1. <code>@channel1, @channel2</code> (Public)\n2. <code>-10012345|https://t.me/+Link, @channel2</code> (Private + Link)\n\nTips: Pisahkan dengan koma.", { parse_mode: "HTML" });
     }
 
     try {
@@ -120,7 +120,6 @@ bot.command("start", async (ctx) => {
     const isNewUser = checkUser.rows.length === 0;
 
     // 2. Simpan/Update User ke Database (Upsert)
-    // Pastikan data tersimpan dulu (Sesuai request: "ketika data sudah terdaftar")
     await sql(
         `INSERT INTO users (id, username, first_name, joined_at) VALUES (?, ?, ?, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET username = ?, first_name = ?`,
@@ -138,7 +137,6 @@ bot.command("start", async (ctx) => {
     }
 
     // 4. Proses Referral (HANYA JIKA USER BARU)
-    // Poin masuk setelah user baru sukses terdaftar di DB
     const payload = ctx.match;
     if (isNewUser && payload && payload !== user.referral_code) {
         // Cari Referrer
@@ -165,14 +163,22 @@ bot.command("start", async (ctx) => {
         }
     }
 
-    // 4. Cek Force Subscribe
+    // 5. Cek Force Subscribe
     const isJoined = await checkMember(userId, ctx);
     if (!isJoined) {
-        const channels = await getForceSubChannels();
+        const rawChannels = await getForceSubChannels();
         const keyboard = new InlineKeyboard();
 
-        channels.forEach((ch, i) => {
-            let url = ch.startsWith("@") ? `https://t.me/${ch.replace("@", "")}` : `https://t.me/c/${ch.replace("-100", "")}/1`;
+        rawChannels.forEach((raw, i) => {
+            const parts = raw.split('|');
+            const chId = parts[0].trim();
+            const chLink = parts[1] ? parts[1].trim() : "";
+
+            let url = chLink;
+            if (!url) {
+                url = chId.startsWith("@") ? `https://t.me/${chId.replace("@", "")}` : `https://t.me/c/${chId.replace("-100", "")}/1`;
+            }
+
             keyboard.url(`📢 Channel ${i + 1}`, url).row();
         });
 
@@ -659,6 +665,7 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
         .text("⚙️ Cek Team ID", "adm_team_id").text("🍪 Status Cookie", "adm_cookie").row()
         .text("📢 Broadcast", "adm_help_bc").text("🗑️ Hapus User", "adm_help_del").row()
         .text("💀 Force Expire", "adm_help_exp").text("📋 List Channel", "adm_list_ch").row()
+        .text("➕ Set Channel", "adm_set_ch").row()
         .text("🚀 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick");
 
     await ctx.reply(
@@ -714,7 +721,23 @@ bot.callbackQuery("adm_help_exp", async (ctx) => {
 bot.callbackQuery("adm_list_ch", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const channels = await getForceSubChannels();
-    await ctx.reply(`📋 <b>Channel Wajib Join:</b>\n${channels.join('\n')}\n\nUbah: <code>/set_channels @ch1, @ch2</code>`, { parse_mode: "HTML" });
+    await ctx.reply(`📋 <b>Channel Wajib Join:</b>\n${channels.join('\n')}\n\nUbah: <code>/set_channels ...</code>`, { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_set_ch", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply(
+        `➕ <b>Edit Channel Wajib Join:</b>\n\n` +
+        `Ketik: <code>/set_channels [DATA]</code>\n\n` +
+        `📝 <b>Contoh Format:</b>\n` +
+        `1. Public Channel:\n` +
+        `   <code>@username1, @username2</code>\n` +
+        `2. Private Channel (Pakai | Link):\n` +
+        `   <code>-1001234567|https://t.me/+InvLnk, @public</code>\n\n` +
+        `Pastikan bot sudah jadi ADMIN di channel tersebut!`,
+        { parse_mode: "HTML" }
+    );
     await ctx.answerCallbackQuery();
 });
 
