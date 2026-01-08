@@ -335,14 +335,13 @@ async function runPuppeteerQueue() {
                                 return {
                                     found: true,
                                     ariaDisabled: button.getAttribute('aria-disabled'),
-                                    disabled: button.disabled,
-                                    button: button  // Return reference for clicking
+                                    disabled: button.disabled
                                 };
                             }
-                            return { found: false, ariaDisabled: null, disabled: null, button: null };
+                            return { found: false, ariaDisabled: null, disabled: null };
                         });
 
-                        if (buttonState.found) {
+                        if (buttonState && buttonState.found) {
                             buttonEnabled = buttonState.ariaDisabled !== 'true' && !buttonState.disabled;
 
                             if (waitAttempts % 5 === 0) { // Log every 5 attempts (2.5 seconds)
