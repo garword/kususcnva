@@ -9,7 +9,8 @@ dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const ADMIN_ID = process.env.ADMIN_ID || '';
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || '';
+// Fix: Check both common names for the channel
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || process.env.ADMIN_CHANNEL_ID || '';
 
 // Find Chrome Path
 const findChromeParams = [
@@ -180,6 +181,14 @@ async function runPuppeteerQueue() {
 
                 await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
                 console.log("   ✅ Login Submitted. checking access...");
+
+                // CAPTURE LOGIN SUCCESS SCREENSHOT
+                const loginShotPath = `login_success_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: loginShotPath, quality: 60, type: 'jpeg' });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, loginShotPath, `✅ <b>Login Success</b>\nBerhasil masuk ke akun Canva!`);
+                    if (fs.existsSync(loginShotPath)) fs.unlinkSync(loginShotPath);
+                } catch (e) { console.error("Snapshot failed", e); }
 
                 await new Promise(r => setTimeout(r, 3000)); // Allow redirect
 
