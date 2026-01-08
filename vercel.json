@@ -1,4 +1,5 @@
 {
+    "outputDirectory": "public",
     "functions": {
         "api/**/*.ts": {
             "memory": 1024,
