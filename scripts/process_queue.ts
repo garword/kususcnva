@@ -154,14 +154,105 @@ async function runPuppeteerQueue() {
 
         const page = await browser.newPage();
 
-        // Remove webdriver flag
+        // 🛡️ ANTI-DETECTION: Inject realistic browser fingerprint
         await page.evaluateOnNewDocument(() => {
+            // 1. Override navigator.webdriver (already done via ignoreDefaultArgs but reinforce)
             Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
+                get: () => false
+            });
+
+            // 2. Override navigator properties to look like real Chrome
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [
+                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                    { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                    { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                ]
+            });
+
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en', 'id']
+            });
+
+            // 3. Canvas Fingerprint Randomization (slight noise)
+            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+            HTMLCanvasElement.prototype.toDataURL = function (type?: string) {
+                const context = this.getContext('2d');
+                if (context) {
+                    // Add tiny noise to canvas
+                    const imageData = context.getImageData(0, 0, this.width, this.height);
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                        imageData.data[i] += Math.floor(Math.random() * 3) - 1; // R
+                        imageData.data[i + 1] += Math.floor(Math.random() * 3) - 1; // G
+                        imageData.data[i + 2] += Math.floor(Math.random() * 3) - 1; // B
+                    }
+                    context.putImageData(imageData, 0, 0);
+                }
+                return originalToDataURL.apply(this, [type] as any);
+            };
+
+            // 4. WebGL Fingerprint Spoofing
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function (parameter) {
+                // Spoof UNMASKED_VENDOR_WEBGL & UNMASKED_RENDERER_WEBGL
+                if (parameter === 37445) {
+                    return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
+                }
+                if (parameter === 37446) {
+                    return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
+                }
+                return getParameter.apply(this, [parameter] as any);
+            };
+
+            // 5. Add Chrome runtime
+            (window as any).chrome = {
+                runtime: {},
+                loadTimes: function () { },
+                csi: function () { },
+                app: {}
+            };
+
+            // 6. Override permissions
+            const originalQuery = navigator.permissions.query;
+            navigator.permissions.query = (parameters: any) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({ state: 'prompt' } as PermissionStatus) :
+                    originalQuery(parameters)
+            );
+
+            // 7. Timezone & Locale consistency
+            Object.defineProperty(Intl.DateTimeFormat.prototype, 'resolvedOptions', {
+                value: function () {
+                    return {
+                        locale: 'en-US',
+                        calendar: 'gregory',
+                        numberingSystem: 'latn',
+                        timeZone: 'Asia/Jakarta',
+                        hour12: false,
+                        weekday: undefined,
+                        era: undefined,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                    };
+                }
             });
         });
-        await page.setUserAgent(userAgent);
-        await page.setViewport({ width: 1280, height: 800 });
+
+        // Set realistic user-agent
+        await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+        // Set extra HTTP headers to look more realistic
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Dest': 'document',
+            'Upgrade-Insecure-Requests': '1'
+        });
 
         // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
         const canvaEmail = process.env.CANVA_EMAIL;
