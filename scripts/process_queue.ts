@@ -524,7 +524,27 @@ async function runPuppeteerQueue() {
                     });
 
                     if (!inviteButtonFound) {
-                        throw new Error("Invite people button not found");
+                        // DEBUG: List all buttons found on page to understand what's visible
+                        const visibleButtons = await page.evaluate(() => {
+                            return Array.from(document.querySelectorAll('button'))
+                                .map(b => b.textContent?.trim() || '')
+                                .filter(t => t.length > 0)
+                                .slice(0, 10); // First 10 buttons
+                        });
+                        const pageTitle = await page.title();
+                        const pageUrl = page.url();
+
+                        console.log(`   [DEBUG] ERROR: Invite button not found!`);
+                        console.log(`   [DEBUG] Current Page: ${pageTitle} (${pageUrl})`);
+                        console.log(`   [DEBUG] Visible Buttons: ${JSON.stringify(visibleButtons)}`);
+
+                        // Check for specific blockers
+                        const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+                        if (bodyText.includes("What will you be using Canva for")) {
+                            console.log("   [DEBUG] BLOCKED by Onboarding Modal! (Needs handling)");
+                        }
+
+                        throw new Error(`Invite people button not found. Page: ${pageTitle}`);
                     }
 
                     console.log('   [DEBUG] Clicking Invite button...');
