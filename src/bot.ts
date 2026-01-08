@@ -653,6 +653,10 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
     const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
 
+    const adminKeyboard = new InlineKeyboard()
+        .text("🚀 Test Auto-Invite", "test_invite").row()
+        .text("🦶 Test Auto-Kick", "test_kick");
+
     await ctx.reply(
         `<b>Panel Admin</b>\n\n` +
         `🆔 Team ID: <code>${teamId}</code>\n` +
@@ -661,8 +665,42 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
         `/set_team_id - Set ID Tim\n` +
         `/set_cookie - Update Cookie\n` +
         `/help_cookie - Tutorial Cookie`,
-        { parse_mode: "HTML" }
+        {
+            parse_mode: "HTML",
+            reply_markup: adminKeyboard
+        }
     );
+});
+
+// Callback: Test Actions
+bot.callbackQuery("test_invite", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("🤖 Menjalankan <b>Auto-Invite</b> Queue... (Wait)", { parse_mode: "HTML" });
+
+    exec("npm run process-queue", (error, stdout, stderr) => {
+        const output = stdout.length > 2000 ? stdout.substring(stdout.length - 2000) : stdout;
+        if (error) {
+            ctx.reply(`❌ <b>Failed:</b>\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
+        } else {
+            ctx.reply(`✅ <b>Invite Done!</b>\n<pre>${output}</pre>`, { parse_mode: "HTML" });
+        }
+    });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("test_kick", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("🤖 Menjalankan <b>Auto-Kick</b> Job... (Wait)", { parse_mode: "HTML" });
+
+    exec("npm run auto-kick", (error, stdout, stderr) => {
+        const output = stdout.length > 2000 ? stdout.substring(stdout.length - 2000) : stdout;
+        if (error) {
+            ctx.reply(`❌ <b>Failed:</b>\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
+        } else {
+            ctx.reply(`✅ <b>Kick Done!</b>\n<pre>${output}</pre>`, { parse_mode: "HTML" });
+        }
+    });
+    await ctx.answerCallbackQuery();
 });
 
 // ============================================================
