@@ -139,10 +139,27 @@ async function runPuppeteerQueue() {
             executablePath: chromePath,
             headless: false,
             defaultViewport: null,
-            args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            ignoreDefaultArgs: ['--enable-automation'],
+            args: [
+                '--start-maximized',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-infobars',
+                '--disable-dev-shm-usage',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
         });
 
         const page = await browser.newPage();
+
+        // Remove webdriver flag
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false,
+            });
+        });
         await page.setUserAgent(userAgent);
         await page.setViewport({ width: 1280, height: 800 });
 
