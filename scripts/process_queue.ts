@@ -301,13 +301,19 @@ async function runPuppeteerQueue() {
 
                 // STEP 4: Wait for Password Field & Enter Password
                 console.log("   [4/5] Waiting for password field...");
-                await randomDelay(2000, 3500); // Loading transition
+                await randomDelay(2500, 4000); // Give extra time for transition/re-render
 
-                const passInput = await page.waitForSelector('input[type="password"], input.bCVoGQ', { timeout: 10000 });
+                // Re-fetch selector to avoid "Detached Node" error
+                const inputSelector = 'input[type="password"], input.bCVoGQ';
+                await page.waitForSelector(inputSelector, { timeout: 15000 });
+                const passInput = await page.$(inputSelector);
+
                 if (passInput) {
                     console.log("   [4/5] Entering Password...");
-                    await randomDelay(500, 1000); // Pause before typing password
+                    await randomDelay(500, 1000); // Pause before typing
                     await humanType(passInput, canvaPassword); // Human typing!
+                } else {
+                    throw new Error("Password input field not found after wait.");
                 }
 
                 // STEP 5: Click "Log in" button (span with text "Log in")
