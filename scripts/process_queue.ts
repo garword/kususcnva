@@ -342,17 +342,51 @@ async function runPuppeteerQueue() {
 
                         if (!input) return { success: false, message: `Email input not found after ${maxRetries} retries (popup may not have opened)` };
 
-                        input.value = targetEmail;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        console.log('   [DEBUG] Email entered, waiting for button to enable...');
-                        await sleep(4000); // Wait for Canva to validate email and enable button
+                        // 2. Type Email Like Human (Character by Character)
+                        console.log('   [DEBUG] Typing email like human...');
+                        input.focus();
+                        await sleep(300);
+
+                        for (const char of targetEmail) {
+                            input.value += char;
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            await sleep(Math.random() * 100 + 50); // Random delay 50-150ms per character
+                        }
+
+                        console.log('   [DEBUG] Email typed, triggering validation...');
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                        input.blur(); // Trigger validation
+                        await sleep(500);
 
                         // 3. (Optional) Set Role to Student if needed
                         // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
                         // Verify if it defaults to Student. Log shows "Student" text in span. Assuming default is fine for now.
 
-                        // 4. Click 'Send invitations'
-                        // Log says: TAG: SPAN, TEXT: "Send invitations"
+                        // 4. WAIT FOR BUTTON TO ENABLE (Check disabled state)
+                        console.log('   [DEBUG] Waiting for Send button to enable...');
+                        let buttonEnabled = false;
+                        let waitAttempts = 0;
+                        const maxWaitForButton = 20;
+
+                        while (!buttonEnabled && waitAttempts < maxWaitForButton) {
+                            await sleep(500);
+
+                            const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
+                                findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
+
+                            if (sendBtn && sendBtn.closest('button')) {
+                                const btn = sendBtn.closest('button') as HTMLButtonElement;
+                                buttonEnabled = !btn.disabled && !btn.hasAttribute('disabled');
+                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton} - Enabled: ${buttonEnabled}`);
+                            }
+                            waitAttempts++;
+                        }
+
+                        if (!buttonEnabled) {
+                            return { success: false, message: "Send button did not enable after typing email" };
+                        }
+
+                        // 5. Click 'Send invitations'
                         const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
                             findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
 
