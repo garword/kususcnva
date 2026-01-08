@@ -186,7 +186,9 @@ bot.command("start", async (ctx) => {
 
         return ctx.reply(
             `⛔ <b>Akses Terkunci!</b>\n\n` +
-            `Halo ${firstName}, untuk menggunakan bot ini Anda <b>WAJIB JOIN</b> ke channel berikut:`,
+            `Halo ${firstName}, untuk menggunakan bot ini Anda <b>WAJIB JOIN</b> ke channel berikut:\n\n` +
+            `⚠️ <b>PERINGATAN KERAS:</b>\n` +
+            `Jika Anda keluar (leave) dari channel/grup ini, akun Canva Anda akan <b>OTOMATIS DI-KICK</b> oleh sistem kami!`,
             { reply_markup: keyboard, parse_mode: "HTML" }
         );
     }
@@ -390,7 +392,7 @@ bot.command("aktivasi", async (ctx) => {
 
     // Force Subscribe Check
     if (!(await checkMember(userId, ctx))) {
-        return ctx.reply("⛔ <b>Akses Ditolak!</b>\nAnda belum join channel wajib.\nSilakan ketik /start untuk melihat list channel.", { parse_mode: "HTML" });
+        return ctx.reply("⛔ <b>Akses Ditolak!</b>\n\nAnda belum join channel wajib.\nSilakan ketik /start untuk melihat list channel.\n\n⚠️ <i>Ingat: Keluar dari channel = Auto-Kick Canva!</i>", { parse_mode: "HTML" });
     }
 
     const email = ctx.match;
