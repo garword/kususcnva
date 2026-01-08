@@ -240,7 +240,8 @@ async function runPuppeteerQueue() {
             console.log(`📧 Processing Invite: ${email} (${duration} days)`);
 
             try {
-                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/team';
+                // Fix: Default to /settings/people for finding the invite button
+                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
                 await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
                 await new Promise(r => setTimeout(r, 2000));
 
@@ -254,16 +255,32 @@ async function runPuppeteerQueue() {
                     };
 
                     try {
-                        // 1. Click 'Invite people' (Usually a SPAN or BUTTON)
-                        // Log says: TAG: SPAN, TEXT: "Invite people"
-                        const inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people');
-                        if (!inviteBtn) return { success: false, message: "Invite button not found (Text: Invite people)" };
+                        // 1. Check for 'Invite people' button
+                        let inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
+                            findByText('span', 'Undang orang') || findByText('button', 'Undang orang');
+
+                        // FALLBACK: If not found, maybe we are on the wrong tab. Click "People" / "Anggota" in sidebar.
+                        if (!inviteBtn) {
+                            const peopleTab = findByText('span', 'People') || findByText('p', 'People') ||
+                                findByText('span', 'Anggota') || findByText('p', 'Anggota') ||
+                                findByText('span', 'Tim') || findByText('p', 'Tim');
+
+                            if (peopleTab) {
+                                peopleTab.click();
+                                await sleep(3000); // Wait for tab switch
+                                // Search again
+                                inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
+                                    findByText('span', 'Undang orang') || findByText('button', 'Undang orang');
+                            }
+                        }
+
+                        if (!inviteBtn) return { success: false, message: "Invite button not found (Tried: Invite people/Undang orang & Sidebar)" };
                         inviteBtn.click();
                         await sleep(1500);
 
                         // 2. Fill Email
                         // Log says: TAG: INPUT, ARIA: "Enter email for person 1"
-                        let input = document.querySelector('input[aria-label="Enter email for person 1"]') as HTMLInputElement;
+                        let input = document.querySelector('input[aria-label="Enter email for person 1"], input[aria-label*="email"], input[type="email"]') as HTMLInputElement;
                         if (!input) {
                             // Fallback to placeholder
                             input = document.querySelector('input[placeholder*="email" i]') as HTMLInputElement;
@@ -280,7 +297,9 @@ async function runPuppeteerQueue() {
 
                         // 4. Click 'Send invitations'
                         // Log says: TAG: SPAN, TEXT: "Send invitations"
-                        const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations');
+                        const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
+                            findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
+
                         if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
 
                         sendBtn.click();
