@@ -37,6 +37,7 @@ jobs:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          LOG_CHANNEL_ID: ${{ secrets.LOG_CHANNEL_ID }}
         run: npm run process-queue
       
       - name: Upload logs (if needed)
