@@ -137,8 +137,9 @@ async function runPuppeteerQueue() {
 
         const browser = await puppeteer.launch({
             executablePath: chromePath,
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            headless: false,
+            defaultViewport: null,
+            args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         });
 
         const page = await browser.newPage();
@@ -293,15 +294,36 @@ async function runPuppeteerQueue() {
 
                         // Click and Wait for Popup
                         inviteBtn.click();
-                        await sleep(4000); // Popup animation might be slow
+                        console.log('   [DEBUG] Clicked Invite button, waiting for popup...');
 
-                        // 2. Fill Email (Look for input visible in popup)
-                        let input = document.querySelector('input[aria-label="Enter email for person 1"], input[aria-label*="email"], input[type="email"]') as HTMLInputElement;
-                        if (!input) {
-                            // Fallback to placeholder
-                            input = document.querySelector('input[placeholder*="email" i]') as HTMLInputElement;
+                        // 2. WAIT FOR INPUT TO APPEAR (Polling with retries)
+                        // The popup has animation - input might not be available immediately
+                        let input: HTMLInputElement | null = null;
+                        let retries = 0;
+                        const maxRetries = 10;
+
+                        while (!input && retries < maxRetries) {
+                            await sleep(800); // Wait 800ms between each try
+
+                            // Try multiple selectors in order of specificity
+                            input = document.querySelector('input[aria-label="Enter email for person 1"]') as HTMLInputElement;
+                            if (!input) input = document.querySelector('input[aria-label*="email"]') as HTMLInputElement;
+                            if (!input) input = document.querySelector('input[placeholder*="email" i]') as HTMLInputElement;
+                            if (!input) input = document.querySelector('input[type="email"]') as HTMLInputElement;
+                            if (!input) {
+                                // Last resort: find any visible text input in the page
+                                const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+                                input = allInputs.find(el => {
+                                    const inp = el as HTMLInputElement;
+                                    return inp.offsetParent !== null && !inp.disabled;
+                                }) as HTMLInputElement;
+                            }
+
+                            retries++;
+                            console.log(`   [DEBUG] Polling attempt ${retries}/${maxRetries} - Input found: ${!!input}`);
                         }
-                        if (!input) return { success: false, message: "Email input not found" };
+
+                        if (!input) return { success: false, message: `Email input not found after ${maxRetries} retries (popup may not have opened)` };
 
                         input.value = targetEmail;
                         input.dispatchEvent(new Event('input', { bubbles: true }));
