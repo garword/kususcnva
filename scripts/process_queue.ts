@@ -271,163 +271,99 @@ async function runPuppeteerQueue() {
                     console.log(`   [DEBUG] Screenshot saved: ${debugShot}`);
                 } catch (e) { console.log('   [DEBUG] Screenshot failed'); }
 
-                const result = await page.evaluate(async (targetEmail) => {
-                    const sleep = (ms: number) => new Promise(r => setTimeout(r, 100)); // Faster sleep
+                // NATIVE PUPPETEER INVITE FLOW (More Reliable)
+                console.log('   [DEBUG] Starting native Puppeteer invite flow...');
+                let result = { success: false, message: "" };
 
-                    // Helper to find by text
-                    const findByText = (tag: string, text: string) => {
-                        return Array.from(document.querySelectorAll(tag))
-                            .find(el => el.textContent?.toLowerCase().includes(text.toLowerCase())) as HTMLElement;
+                try {
+                    // 1. Find and click "Invite people" button using XPath
+                    console.log('   [DEBUG] Looking for Invite people button...');
+                    const inviteButtons = await (page as any).$x("//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]");
+
+                    if (inviteButtons.length === 0) {
+                        throw new Error("Invite people button not found");
+                    }
+
+                    console.log('   [DEBUG] Clicking Invite button...');
+                    await inviteButtons[0].click();
+                    await new Promise(r => setTimeout(r, 2000)); // Wait for popup animation
+
+                    // 2. Wait for and find email input
+                    console.log('   [DEBUG] Waiting for email input to appear...');
+                    await new Promise(r => setTimeout(r, 1000));
+
+                    const emailInput = await page.$('input[aria-label="Enter email for person 1"]');
+                    if (!emailInput) {
+                        throw new Error("Email input not found in popup");
+                    }
+
+                    // 3. Type email using native Puppeteer typing
+                    console.log('   [DEBUG] Typing email with native Puppeteer...');
+                    await emailInput.click(); // Focus the input
+                    await new Promise(r => setTimeout(r, 500));
+
+                    // Use page.keyboard.type for most realistic typing
+                    await page.keyboard.type(email, { delay: 80 }); // 80ms delay between keystrokes
+
+                    // 4. Trigger blur to start validation
+                    console.log('   [DEBUG] Triggering validation...');
+                    await page.keyboard.press('Tab'); // Move focus away
+                    await new Promise(r => setTimeout(r, 2000)); // Initial wait for validation to start
+
+                    // 5. Wait for Send button to become enabled
+                    console.log('   [DEBUG] Waiting for Send button to enable...');
+                    let buttonEnabled = false;
+                    let waitAttempts = 0;
+                    const maxWait = 30; // 30 attempts = 15 seconds max
+
+                    while (!buttonEnabled && waitAttempts < maxWait) {
+                        const sendButtons = await (page as any).$x("//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button");
+
+                        if (sendButtons.length > 0) {
+                            const ariaDisabled = await sendButtons[0].evaluate((el: any) => el.getAttribute('aria-disabled'));
+                            const isDisabled = await sendButtons[0].evaluate((el: any) => (el as HTMLButtonElement).disabled);
+
+                            buttonEnabled = ariaDisabled !== 'true' && !isDisabled;
+
+                            if (waitAttempts % 5 === 0) { // Log every 5 attempts (2.5 seconds)
+                                console.log(`   [DEBUG] Attempt ${waitAttempts}/${maxWait} - aria-disabled: ${ariaDisabled}, disabled: ${isDisabled}`);
+                            }
+
+                            if (buttonEnabled) {
+                                console.log('   [DEBUG] Button enabled! Clicking Send...');
+                                await sendButtons[0].click();
+                                break;
+                            }
+                        }
+
+                        await new Promise(r => setTimeout(r, 500));
+                        waitAttempts++;
+                    }
+
+                    if (!buttonEnabled) {
+                        throw new Error(`Send button did not enable after ${waitAttempts * 0.5} seconds`);
+                    }
+
+                    // 6. Wait for and verify success notification
+                    console.log('   [DEBUG] Waiting for success notification...');
+                    await new Promise(r => setTimeout(r, 3000));
+
+                    // Check for success notification
+                    const successNotifications = await (page as any).$x("//*[contains(text(), 'Invitation sent to') or contains(text(), 'Undangan terkirim')]");
+
+                    result = {
+                        success: successNotifications.length > 0,
+                        message: successNotifications.length > 0 ? "Invited" : "No success notification found"
                     };
 
-                    try {
-                        // DEBUG: Screenshot page before doing anything
-                        // We can't take screenshot inside evaluate directly easily without exposing function, 
-                        // so we do it outside if possible, but here we are inside evaluate.
-                        // Actually, we can return a specific status to trigger screenshot outside, but for now let's rely on finding robustly.
+                    console.log(`   [DEBUG] Result: ${result.success ? '✅ Success' : '❌ Failed'} - ${result.message}`);
 
-                        // 1. Check for 'Invite people' button
-                        // Search in button, span, div, a
-                        // Also check aria-label which is often better.
-                        const findByAria = (labelPart: string) => {
-                            return Array.from(document.querySelectorAll(`[aria-label*="${labelPart}" i]`))
-                                .map(el => el as HTMLElement)
-                                .find(el => el.offsetParent !== null);
-                        }
-
-                        let inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
-                            findByText('span', 'Undang orang') || findByText('button', 'Undang orang') ||
-                            findByText('div', 'Invite people') || findByText('a', 'Invite people') ||
-                            findByAria("Invite people") || findByAria("Undang orang") || findByAria("Invite members");
-
-                        // FALLBACK: If not found, look for sidebar 
-                        if (!inviteBtn) {
-                            // ... existing sidebar logic ...
-                            const peopleTab = findByText('span', 'People') || findByText('p', 'People') ||
-                                findByText('span', 'Anggota') || findByText('p', 'Anggota') ||
-                                findByText('span', 'Tim') || findByText('p', 'Tim');
-
-                            if (peopleTab) {
-                                peopleTab.click();
-                                await sleep(3000);
-                                inviteBtn = findByText('span', 'Invite people') || findByText('button', 'Invite people') ||
-                                    findByText('span', 'Undang orang') || findByText('button', 'Undang orang');
-                            }
-                        }
-
-                        if (!inviteBtn) return { success: false, message: "Invite button not found (Tried: Text & Aria)" };
-
-                        // Click and Wait for Popup
-                        inviteBtn.click();
-                        console.log('   [DEBUG] Clicked Invite button, waiting for popup...');
-
-                        // 2. WAIT FOR INPUT TO APPEAR (Polling with retries)
-                        // The popup has animation - input might not be available immediately
-                        let input: HTMLInputElement | null = null;
-                        let retries = 0;
-                        const maxRetries = 10;
-
-                        while (!input && retries < maxRetries) {
-                            await sleep(800); // Wait 800ms between each try
-
-                            // Try multiple selectors in order of specificity
-                            input = document.querySelector('input[aria-label="Enter email for person 1"]') as HTMLInputElement;
-                            if (!input) input = document.querySelector('input[aria-label*="email"]') as HTMLInputElement;
-                            if (!input) input = document.querySelector('input[placeholder*="email" i]') as HTMLInputElement;
-                            if (!input) input = document.querySelector('input[type="email"]') as HTMLInputElement;
-                            if (!input) {
-                                // Last resort: find any visible text input in the page
-                                const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
-                                input = allInputs.find(el => {
-                                    const inp = el as HTMLInputElement;
-                                    return inp.offsetParent !== null && !inp.disabled;
-                                }) as HTMLInputElement;
-                            }
-
-                            retries++;
-                            console.log(`   [DEBUG] Polling attempt ${retries}/${maxRetries} - Input found: ${!!input}`);
-                        }
-
-                        if (!input) return { success: false, message: `Email input not found after ${maxRetries} retries (popup may not have opened)` };
-
-                        // 2. Type Email Like Human WITH FULL KEYBOARD EVENTS
-                        console.log('   [DEBUG] Typing email with full keyboard simulation...');
-                        input.focus();
-                        await sleep(300);
-
-                        for (const char of targetEmail) {
-                            // Trigger keydown event
-                            const keydownEvent = new KeyboardEvent('keydown', {
-                                key: char,
-                                code: `Key${char.toUpperCase()}`,
-                                bubbles: true,
-                                cancelable: true
-                            });
-                            input.dispatchEvent(keydownEvent);
-
-                            // Add character to value
-                            input.value += char;
-
-                            // Trigger input event
-                            input.dispatchEvent(new Event('input', { bubbles: true }));
-
-                            // Trigger keyup event
-                            const keyupEvent = new KeyboardEvent('keyup', {
-                                key: char,
-                                code: `Key${char.toUpperCase()}`,
-                                bubbles: true,
-                                cancelable: true
-                            });
-                            input.dispatchEvent(keyupEvent);
-
-                            await sleep(Math.random() * 100 + 50); // Random delay 50-150ms per character
-                        }
-
-                        console.log('   [DEBUG] Email typed, triggering validation...');
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        input.blur(); // Trigger validation
-                        console.log('   [DEBUG] Waiting 5 seconds for Canva to process email...');
-                        await sleep(5000); // Wait 5 seconds as requested by user
-
-                        // 3. (Optional) Set Role to Student if needed
-                        // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
-                        // Verify if it defaults to Student. Log shows "Student" text in span. Assuming default is fine for now.
-
-                        // 4. FIND SEND BUTTON (Don't wait for enable - we'll click it anyway)
-                        console.log('   [DEBUG] Finding Send button...');
-                        const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
-                            findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
-
-                        if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
-
-                        // Check button state for logging but don't block on it
-                        if (sendBtn.closest('button')) {
-                            const btn = sendBtn.closest('button') as HTMLButtonElement;
-                            const ariaDisabled = btn.getAttribute('aria-disabled');
-                            console.log(`   [DEBUG] Button aria-disabled: ${ariaDisabled} (clicking anyway...)`);
-                        }
-
-                        // 5. Click 'Send invitations' (FORCE CLICK even if aria-disabled)
-                        sendBtn.click();
-                        console.log('   [DEBUG]  Clicked Send button, waiting for confirmation...');
-                        await sleep(2500);
-
-                        // 5. Validate
-                        const bodyText = document.body.innerText.toLowerCase();
-                        if (bodyText.includes('sent') || bodyText.includes('invited') || bodyText.includes('berhasil')) {
-                            return { success: true, message: "Invited" };
-                        }
-                        // If dialog closed, assume success
-                        if (!document.body.contains(sendBtn)) {
-                            return { success: true, message: "Dialog closed (Assumed Success)" };
-                        }
-
-                        return { success: true, message: "Assumed success (no error)" };
-
-                    } catch (e: any) {
-                        return { success: false, message: e.message };
-                    }
-                }, email);
+                } catch (error: any) {
+                    result = {
+                        success: false,
+                        message: error.message
+                    };
+                }
 
                 if (result.success) {
                     console.log(`✅ Invited: ${email}`);
