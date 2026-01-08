@@ -350,14 +350,36 @@ async function runPuppeteerQueue() {
 
                         if (!input) return { success: false, message: `Email input not found after ${maxRetries} retries (popup may not have opened)` };
 
-                        // 2. Type Email Like Human (Character by Character)
-                        console.log('   [DEBUG] Typing email like human...');
+                        // 2. Type Email Like Human WITH FULL KEYBOARD EVENTS
+                        console.log('   [DEBUG] Typing email with full keyboard simulation...');
                         input.focus();
                         await sleep(300);
 
                         for (const char of targetEmail) {
+                            // Trigger keydown event
+                            const keydownEvent = new KeyboardEvent('keydown', {
+                                key: char,
+                                code: `Key${char.toUpperCase()}`,
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            input.dispatchEvent(keydownEvent);
+
+                            // Add character to value
                             input.value += char;
+
+                            // Trigger input event
                             input.dispatchEvent(new Event('input', { bubbles: true }));
+
+                            // Trigger keyup event
+                            const keyupEvent = new KeyboardEvent('keyup', {
+                                key: char,
+                                code: `Key${char.toUpperCase()}`,
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            input.dispatchEvent(keyupEvent);
+
                             await sleep(Math.random() * 100 + 50); // Random delay 50-150ms per character
                         }
 
@@ -371,65 +393,21 @@ async function runPuppeteerQueue() {
                         // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
                         // Verify if it defaults to Student. Log shows "Student" text in span. Assuming default is fine for now.
 
-                        // 4. WAIT FOR BUTTON TO ENABLE (Check disabled state)
-                        console.log('   [DEBUG] Waiting for Send button to enable...');
-                        let buttonEnabled = false;
-                        let waitAttempts = 0;
-                        const maxWaitForButton = 20;
-
-                        while (!buttonEnabled && waitAttempts < maxWaitForButton) {
-                            await sleep(500);
-
-                            const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
-                                findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
-
-                            if (sendBtn && sendBtn.closest('button')) {
-                                const btn = sendBtn.closest('button') as HTMLButtonElement;
-                                const isDisabled = btn.disabled;
-                                const hasDisabledAttr = btn.hasAttribute('disabled');
-                                const ariaDisabled = btn.getAttribute('aria-disabled');
-                                const btnClass = btn.className;
-
-                                buttonEnabled = !isDisabled && !hasDisabledAttr && ariaDisabled !== 'true';
-
-                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton}:`);
-                                console.log(`      - Enabled: ${buttonEnabled}`);
-                                console.log(`      - disabled prop: ${isDisabled}`);
-                                console.log(`      - disabled attr: ${hasDisabledAttr}`);
-                                console.log(`      - aria-disabled: ${ariaDisabled}`);
-                                console.log(`      - className: ${btnClass}`);
-                            } else {
-                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton} - Button not found`);
-                            }
-                            waitAttempts++;
-                        }
-
-                        if (!buttonEnabled) {
-                            // Get the last checked button for diagnostics
-                            const lastBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
-                                findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
-
-                            return {
-                                success: false,
-                                message: "Send button did not enable after typing email",
-                                debug: {
-                                    buttonFound: !!lastBtn,
-                                    checked: waitAttempts,
-                                    lastButtonState: lastBtn?.closest('button') ? {
-                                        disabled: (lastBtn.closest('button') as HTMLButtonElement).disabled,
-                                        ariaDisabled: (lastBtn.closest('button') as HTMLButtonElement).getAttribute('aria-disabled'),
-                                        className: (lastBtn.closest('button') as HTMLButtonElement).className
-                                    } : null
-                                }
-                            };
-                        }
-
-                        // 5. Click 'Send invitations'
+                        // 4. FIND SEND BUTTON (Don't wait for enable - we'll click it anyway)
+                        console.log('   [DEBUG] Finding Send button...');
                         const sendBtn = findByText('span', 'Send invitations') || findByText('button', 'Send invitations') ||
                             findByText('span', 'Kirim undangan') || findByText('button', 'Kirim undangan');
 
                         if (!sendBtn) return { success: false, message: "Send button not found (Text: Send invitations)" };
 
+                        // Check button state for logging but don't block on it
+                        if (sendBtn.closest('button')) {
+                            const btn = sendBtn.closest('button') as HTMLButtonElement;
+                            const ariaDisabled = btn.getAttribute('aria-disabled');
+                            console.log(`   [DEBUG] Button aria-disabled: ${ariaDisabled} (clicking anyway...)`);
+                        }
+
+                        // 5. Click 'Send invitations' (FORCE CLICK even if aria-disabled)
                         sendBtn.click();
                         console.log('   [DEBUG]  Clicked Send button, waiting for confirmation...');
                         await sleep(2500);
