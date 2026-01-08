@@ -364,7 +364,8 @@ async function runPuppeteerQueue() {
                         console.log('   [DEBUG] Email typed, triggering validation...');
                         input.dispatchEvent(new Event('change', { bubbles: true }));
                         input.blur(); // Trigger validation
-                        await sleep(500);
+                        console.log('   [DEBUG] Waiting 5 seconds for Canva to process email...');
+                        await sleep(5000); // Wait 5 seconds as requested by user
 
                         // 3. (Optional) Set Role to Student if needed
                         // Log says: TAG: BUTTON, ARIA: "Assign role to person 1"
@@ -440,8 +441,9 @@ async function runPuppeteerQueue() {
                     }
 
                     // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
-                    console.log("   Waiting for success notification and refreshing page...");
-                    await new Promise(r => setTimeout(r, 3000)); // Wait for notification to appear
+                    console.log("   Waiting 5 seconds for success notification...");
+                    await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds as requested by user
+                    console.log("   Refreshing page to show user in list...");
                     await page.reload({ waitUntil: 'networkidle2' }); // Refresh to show user in list
                     await new Promise(r => setTimeout(r, 2000)); // Wait for page to fully load
 
