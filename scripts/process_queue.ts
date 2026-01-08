@@ -372,7 +372,7 @@ async function runPuppeteerQueue() {
                     `, [subId, userId, prodId]);
 
                     // Update User Status & Reset Product to Default (1)
-                    await sql(`UPDATE users SET status = 'active', selected_product_id = 1, updated_at = datetime('now') WHERE id = ?`, [userId]);
+                    await sql(`UPDATE users SET status = 'active', selected_product_id = 1 WHERE id = ?`, [userId]);
 
                     if (userId > 0) {
                         await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
