@@ -263,29 +263,89 @@ async function runPuppeteerQueue() {
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
             try {
-                // 1. Enter Email
-                console.log("   Entering Email...");
-                const emailInput = await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+                // STEP 1: Click "Continue with email" button
+                console.log("   [1/5] Looking for 'Continue with email' button...");
+                await new Promise(r => setTimeout(r, 2000)); // Wait for page to stabilize
+
+                const continueWithEmailBtn = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const btn = buttons.find(b => b.textContent?.includes('Continue with email'));
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                    return false;
+                });
+
+                if (!continueWithEmailBtn) {
+                    console.log("   'Continue with email' button not found, might be direct email form");
+                }
+
+                await new Promise(r => setTimeout(r, 1500));
+
+                // STEP 2: Enter Email
+                console.log("   [2/5] Entering Email...");
+                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 });
                 if (emailInput) {
-                    await emailInput.type(canvaEmail, { delay: 50 });
-                    await emailInput.press('Enter');
+                    await emailInput.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    await page.keyboard.type(canvaEmail, { delay: 80 });
                 }
 
-                // 2. Wait for Password Field OR "Continue" button
-                await new Promise(r => setTimeout(r, 2000));
+                // STEP 3: Click "Continue" button (span with text "Continue")
+                console.log("   [3/5] Clicking Continue...");
+                await new Promise(r => setTimeout(r, 1000));
 
-                // Check if we need to click "Continue" first (sometimes split login)
-                const continueBtn = await page.$('button[type="submit"]');
-                if (continueBtn) {
-                    // Sometimes just Enter works, sometimes explicit click needed
+                const continueClicked = await page.evaluate(() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
+                    if (continueSpan) {
+                        const button = continueSpan.closest('button');
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+
+                if (!continueClicked) {
+                    console.log("   Continue button not found, trying Enter key...");
+                    await emailInput?.press('Enter');
                 }
 
-                // 3. Enter Password
-                console.log("   Entering Password...");
-                const passInput = await page.waitForSelector('input[name="password"], input[type="password"]', { timeout: 10000 });
+                // STEP 4: Wait for Password Field & Enter Password
+                console.log("   [4/5] Waiting for password field...");
+                await new Promise(r => setTimeout(r, 2000)); // Wait for transition
+
+                const passInput = await page.waitForSelector('input[type="password"], input.bCVoGQ', { timeout: 10000 });
                 if (passInput) {
-                    await passInput.type(canvaPassword, { delay: 50 });
-                    await passInput.press('Enter');
+                    console.log("   [4/5] Entering Password...");
+                    await passInput.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    await page.keyboard.type(canvaPassword, { delay: 80 });
+                }
+
+                // STEP 5: Click "Log in" button (span with text "Log in")
+                console.log("   [5/5] Clicking Log in...");
+                await new Promise(r => setTimeout(r, 1000));
+
+                const loginClicked = await page.evaluate(() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
+                    if (loginSpan) {
+                        const button = loginSpan.closest('button');
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+
+                if (!loginClicked) {
+                    console.log("   Log in button not found, trying Enter key...");
+                    await passInput?.press('Enter');
                 }
 
                 await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
