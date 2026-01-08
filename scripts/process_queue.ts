@@ -385,8 +385,21 @@ async function runPuppeteerQueue() {
 
                             if (sendBtn && sendBtn.closest('button')) {
                                 const btn = sendBtn.closest('button') as HTMLButtonElement;
-                                buttonEnabled = !btn.disabled && !btn.hasAttribute('disabled');
-                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton} - Enabled: ${buttonEnabled}`);
+                                const isDisabled = btn.disabled;
+                                const hasDisabledAttr = btn.hasAttribute('disabled');
+                                const ariaDisabled = btn.getAttribute('aria-disabled');
+                                const btnClass = btn.className;
+
+                                buttonEnabled = !isDisabled && !hasDisabledAttr && ariaDisabled !== 'true';
+
+                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton}:`);
+                                console.log(`      - Enabled: ${buttonEnabled}`);
+                                console.log(`      - disabled prop: ${isDisabled}`);
+                                console.log(`      - disabled attr: ${hasDisabledAttr}`);
+                                console.log(`      - aria-disabled: ${ariaDisabled}`);
+                                console.log(`      - className: ${btnClass}`);
+                            } else {
+                                console.log(`   [DEBUG] Button check ${waitAttempts + 1}/${maxWaitForButton} - Button not found`);
                             }
                             waitAttempts++;
                         }
