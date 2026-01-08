@@ -144,11 +144,68 @@ async function runPuppeteerQueue() {
         await page.setUserAgent(userAgent);
         await page.setViewport({ width: 1280, height: 800 });
 
-        const cookieObjects = cookie.split(';').map(c => {
-            const [name, ...v] = c.trim().split('=');
-            return { name, value: v.join('='), domain: '.canva.com', path: '/' };
-        }).filter(c => c.name && c.value);
-        await page.setCookie(...cookieObjects);
+        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
+        const canvaEmail = process.env.CANVA_EMAIL;
+        const canvaPassword = process.env.CANVA_PASSWORD;
+
+        if (canvaEmail && canvaPassword) {
+            console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
+            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
+
+            try {
+                // 1. Enter Email
+                console.log("   Entering Email...");
+                const emailInput = await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+                if (emailInput) {
+                    await emailInput.type(canvaEmail, { delay: 50 });
+                    await emailInput.press('Enter');
+                }
+
+                // 2. Wait for Password Field OR "Continue" button
+                await new Promise(r => setTimeout(r, 2000));
+
+                // Check if we need to click "Continue" first (sometimes split login)
+                const continueBtn = await page.$('button[type="submit"]');
+                if (continueBtn) {
+                    // Sometimes just Enter works, sometimes explicit click needed
+                }
+
+                // 3. Enter Password
+                console.log("   Entering Password...");
+                const passInput = await page.waitForSelector('input[name="password"], input[type="password"]', { timeout: 10000 });
+                if (passInput) {
+                    await passInput.type(canvaPassword, { delay: 50 });
+                    await passInput.press('Enter');
+                }
+
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
+                console.log("   ✅ Login Submitted. checking access...");
+
+                await new Promise(r => setTimeout(r, 3000)); // Allow redirect
+
+            } catch (loginErr: any) {
+                console.error("❌ Login Failed:", loginErr);
+                const shotPath = `login_fail_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: shotPath });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, `❌ <b>Login Failed</b>\nReason: ${loginErr.message}`);
+                    if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+                } catch (e) { console.error("Screenshot failed", e); }
+
+                // Fallback to cookie
+                console.log("⚠️ Falling back to Cookie if available...");
+            }
+        }
+
+        // Always try to load cookie as backup/supplement if login didn't fully establish session or skipped
+        if (cookie) {
+            console.log("🍪 Loading Backup Cookies...");
+            const cookieObjects = cookie.split(';').map(c => {
+                const [name, ...v] = c.trim().split('=');
+                return { name, value: v.join('='), domain: '.canva.com', path: '/' };
+            }).filter(c => c.name && c.value);
+            await page.setCookie(...cookieObjects);
+        }
 
         let successInvites = 0;
         let failInvites = 0;
