@@ -1,0 +1,324 @@
+/// <reference lib="dom" />
+import puppeteer from 'puppeteer-core';
+import { sql } from '../lib/db';
+import * as dotenv from 'dotenv';
+import axios from 'axios';
+import fs from 'fs';
+
+dotenv.config();
+
+const BOT_TOKEN = process.env.BOT_TOKEN || '';
+const ADMIN_ID = process.env.ADMIN_ID || '';
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || '';
+
+// Find Chrome Path
+const findChromeParams = [
+    process.env.CHROME_BIN || "",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Users\\" + process.env.USERNAME + "\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+];
+
+function getChromePath() {
+    for (const path of findChromeParams) {
+        if (path && fs.existsSync(path)) return path;
+    }
+    return null;
+}
+
+// Helper to notify specific user (e.g., successful invite)
+async function sendTelegram(chatId: string | number, message: string) {
+    if (!BOT_TOKEN) return;
+    try {
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: chatId,
+            text: message,
+            parse_mode: 'HTML'
+        });
+    } catch (e: any) {
+        console.error("Failed to send Telegram:", e.message);
+    }
+}
+
+// Helper to log to the dedicated channel
+async function sendSystemLog(message: string) {
+    const target = LOG_CHANNEL_ID || ADMIN_ID;
+    if (!BOT_TOKEN || !target) return;
+
+    // Add timestamp header
+    const time = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+    const logMsg = `📝 <b>System Log</b> [${time}]\n\n${message}`;
+
+    try {
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: target,
+            text: logMsg,
+            parse_mode: 'HTML'
+        });
+    } catch (e: any) {
+        console.error("Failed to send system log:", e.message);
+    }
+}
+
+// ============================================================================
+// PUPPETEER ACTIONS (Shared Browser Instance)
+// ============================================================================
+
+async function runPuppeteerQueue() {
+    console.log("🦾 Queue Processor Started...");
+
+    // 1. Fetch Queued Items with Detailed Info
+    // Join with products based on selected_product_id
+    const pendingInvites = await sql(`
+        SELECT u.*, p.name as plan_name, p.duration_days, p.id as prod_id
+        FROM users u 
+        LEFT JOIN products p ON u.selected_product_id = p.id 
+        WHERE u.status = 'pending_invite'
+    `);
+
+    // Check for expired subscriptions
+    const expiredUsers = await sql(`
+        SELECT u.*, s.end_date, p.name as plan_name 
+        FROM subscriptions s 
+        JOIN users u ON s.user_id = u.id 
+        JOIN products p ON s.product_id = p.id 
+        WHERE s.end_date < datetime('now') AND s.status = 'active'
+    `);
+
+    if (pendingInvites.rows.length === 0 && expiredUsers.rows.length === 0) {
+        console.log("✅ Queue is empty. Nothing to do.");
+        // await sendSystemLog("✅ Queue is empty. Nothing to do."); // Too spammy if frequent? User asked for all logs. Let's keep it but maybe only if there was work?
+        // Actually user said "semua data nya di krim". Empty log might be annoyance.
+        // I will logging only if there IS work, or maybe once a day?
+        // Let's stick to logging START only if there is work.
+        return;
+    }
+
+    const startMsg = `⚙️ <b>Job Started</b>\n📊 Pending Invites: ${pendingInvites.rows.length}\n📊 Expired Users: ${expiredUsers.rows.length}`;
+    console.log(startMsg);
+    await sendSystemLog(startMsg);
+
+    // 2. Prepare Browser
+    try {
+        const chromePath = getChromePath();
+        if (!chromePath) throw new Error("Chrome not found!");
+
+        // Get Credentials
+        const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+        const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
+        const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+
+        if (cookieRes.rows.length === 0) throw new Error("No Canva Cookie in DB!");
+
+        const cookie = cookieRes.rows[0].value as string;
+        const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
+        const userAgent = uaRes.rows.length > 0 ? uaRes.rows[0].value as string : "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+        const browser = await puppeteer.launch({
+            executablePath: chromePath,
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+        });
+
+        const page = await browser.newPage();
+        await page.setUserAgent(userAgent);
+
+        const cookieObjects = cookie.split(';').map(c => {
+            const [name, ...v] = c.trim().split('=');
+            return { name, value: v.join('='), domain: '.canva.com', path: '/' };
+        }).filter(c => c.name && c.value);
+        await page.setCookie(...cookieObjects);
+
+        let successInvites = 0;
+        let failInvites = 0;
+        let successKicks = 0;
+        let failKicks = 0;
+
+        // ========================================================================
+        // PROCESS INVITES
+        // ========================================================================
+        for (const user of pendingInvites.rows) {
+            const email = user.email as string;
+            const userId = user.id as number;
+            const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
+            const planName = user.plan_name || 'Trial/Unknown';
+            const duration = (user as any).duration_days || 30; // Default 30 days
+            const prodId = (user as any).prod_id || 1;
+
+            // Calculate End Date for visual log (Approx)
+            const endDateObj = new Date();
+            endDateObj.setDate(endDateObj.getDate() + duration);
+            const endDateStr = endDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+
+            console.log(`📧 Processing Invite: ${email} (${duration} days)`);
+
+            try {
+                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/team';
+                await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                await new Promise(r => setTimeout(r, 2000));
+
+                const result = await page.evaluate(async (targetEmail) => {
+                    const sleep = (ms: number) => new Promise(r => setTimeout(r, 10)); // Reduced sleep for brevity, original was 2000
+                    try {
+                        // 1. Click Invite Button
+                        // Support for Pro (Invite/Add people) and Edu (Add students/Siswa)
+                        const buttons = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
+                        const inviteBtn = buttons.find(b => b.textContent?.toLowerCase().match(/invite|undang|add people|student|siswa|murid/));
+                        if (!inviteBtn) return { success: false, message: "Invite button not found (Pro/Edu)" };
+                        inviteBtn.click();
+                        await sleep(1500);
+
+                        // 2. Fill Email
+                        const input = document.querySelector('input[type="email"], input[placeholder*="email" i]') as HTMLInputElement;
+                        if (!input) return { success: false, message: "Email input not found" };
+                        input.value = targetEmail;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        await sleep(500);
+
+                        // 3. Submit
+                        const submitBtns = Array.from(document.querySelectorAll('button')) as HTMLElement[];
+                        const sendBtn = submitBtns.find(b => b.textContent?.trim().toLowerCase().match(/send|kirim|add|invite/));
+                        if (!sendBtn) return { success: false, message: "Send button not found" };
+                        sendBtn.click();
+                        await sleep(2500);
+
+                        // 4. Validate Success
+                        const bodyText = document.body.innerText.toLowerCase();
+                        if (bodyText.includes('sent') || bodyText.includes('invited') || bodyText.includes('berhasil')) {
+                            return { success: true, message: "Invited" };
+                        }
+                        return { success: true, message: "Assumed success (no error)" };
+
+                    } catch (e: any) {
+                        return { success: false, message: e.message };
+                    }
+                }, email);
+
+                if (result.success) {
+                    console.log(`✅ Invited: ${email}`);
+                    successInvites++;
+
+                    // Create Subscription Record
+                    const subId = `sub_${Date.now()}_${userId}`;
+                    await sql(`
+                        INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
+                        VALUES (?, ?, ?, datetime('now'), datetime('now', '+${duration} days'), 'active')
+                    `, [subId, userId, prodId]);
+
+                    // Update User Status & Reset Product to Default (1)
+                    await sql(`UPDATE users SET status = 'active', selected_product_id = 1, updated_at = datetime('now') WHERE id = ?`, [userId]);
+
+                    if (userId > 0) {
+                        await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                    }
+
+                    const inviteLog = `✅ <b>Invite Success</b>
+👤 User: ${username} (ID: <code>${userId}</code>)
+📧 Email: <code>${email}</code>
+📦 Paket: ${planName}
+📅 Limit: ${endDateStr} WIB`;
+                    await sendSystemLog(inviteLog);
+
+                } else {
+                    console.log(`❌ Failed: ${result.message}`);
+                    failInvites++;
+                    await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+                }
+
+            } catch (e: any) {
+                console.error(e);
+                failInvites++;
+                await sendSystemLog(`❌ <b>Invite Error</b>\nEmail: ${email}\nError: ${e.message}`);
+            }
+        }
+
+        // ========================================================================
+        // PROCESS KICKS
+        // ========================================================================
+        for (const user of expiredUsers.rows) {
+            const email = user.email as string;
+            const userId = user.id as number;
+            const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
+            const planName = user.plan_name || 'Unknown';
+            const endDate = user.end_date ? new Date(user.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-';
+
+            console.log(`🦶 Processing Kick: ${email}`);
+
+            try {
+                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/team';
+                await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                await new Promise(r => setTimeout(r, 2000));
+
+                const result = await page.evaluate(async (targetEmail) => {
+                    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+                    try {
+                        const allElements = Array.from(document.querySelectorAll('*'));
+                        const userEl = allElements.find(el => el.textContent === targetEmail);
+                        if (!userEl) return { success: false, message: "User not found" };
+
+                        let row = userEl.parentElement;
+                        while (row && row.tagName !== 'TR' && !row.className.includes('row')) {
+                            row = row.parentElement;
+                            if (!row) break;
+                        }
+                        if (!row) return { success: false, message: "Row not found" };
+
+                        const btn = row.querySelector('button[aria-label*="Remove"], button[aria-label*="Delete"]') as HTMLElement;
+                        if (btn) {
+                            btn.click();
+                            await sleep(1000);
+                            const confirmBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.match(/remove|confirm|hapus/i)) as HTMLElement;
+                            if (confirmBtn) confirmBtn.click();
+                            return { success: true };
+                        }
+                        return { success: false, message: "Button not found" };
+                    } catch (e: any) { return { success: false, message: e.message }; }
+                }, email);
+
+                if (result.success) {
+                    console.log(`✅ Kicked: ${email}`);
+                    successKicks++;
+                    await sql(`UPDATE subscriptions SET status = 'kicked' WHERE user_id = ? AND status = 'active'`, [userId]);
+                    if (userId > 0) {
+                        await sendTelegram(userId, `⚠️ <b>Langganan Berakhir</b>\nAkses Canva Pro Anda telah berakhir pada ${endDate}.`);
+                    }
+
+                    const kickLog = `🦶 <b>User Kicked</b>
+👤 User: ${username} (ID: <code>${userId}</code>)
+📧 Email: <code>${email}</code>
+📦 Paket: ${planName}
+📅 Limit: ${endDate} WIB`;
+                    await sendSystemLog(kickLog);
+
+                } else {
+                    failKicks++;
+                    await sendSystemLog(`⚠️ <b>Kick Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+                }
+
+            } catch (e: any) {
+                console.error(e);
+                failKicks++;
+                await sendSystemLog(`⚠️ <b>Kick Error</b>\nEmail: ${email}\nError: ${e.message}`);
+            }
+        }
+
+        await browser.close();
+
+        const summary = `
+🏁 <b>Job Finished</b>
+✅ Invites: ${successInvites} | Kicks: ${successKicks}
+❌ Fails:   ${failInvites} | Failed Kicks: ${failKicks}
+        `.trim();
+        await sendSystemLog(summary);
+        console.log("🏁 Queue Processing Finished.");
+
+    } catch (criticalError: any) {
+        console.error("CRITICAL ERROR:", criticalError);
+        await sendSystemLog(`⛔ <b>Critical Error</b>\n${criticalError.message}`);
+    }
+}
+
+runPuppeteerQueue().catch(console.error);

@@ -1,0 +1,48 @@
+name: Process Queue (Invites & Kicks)
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Runs every hour (Hemat kuota free tier)
+  repository_dispatch:
+    types: [process_queue] # Triggered by Bot API
+  workflow_dispatch:      # Manual trigger
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            chromium-browser \
+            chromium-chromedriver
+      
+      - name: Run Queue Processor
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+        run: npm run process-queue
+      
+      - name: Upload logs (if needed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: process-log-${{ github.run_number }}
+          path: logs/*.log
+          if-no-files-found: ignore

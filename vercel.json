@@ -1,0 +1,24 @@
+{
+    "functions": {
+        "api/**/*.ts": {
+            "memory": 1024,
+            "maxDuration": 10
+        }
+    },
+    "crons": [
+        {
+            "path": "/api/cron",
+            "schedule": "0 * * * *"
+        }
+    ],
+    "rewrites": [
+        {
+            "source": "/api/webhook",
+            "destination": "/api/webhook"
+        },
+        {
+            "source": "/api/cron",
+            "destination": "/api/cron"
+        }
+    ]
+}
