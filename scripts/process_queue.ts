@@ -260,8 +260,16 @@ async function runPuppeteerQueue() {
             try {
                 // Fix: Default to /settings/people for finding the invite button
                 const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
+                console.log(`   Navigating to: ${teamUrl}`);
                 await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 4000)); // Longer wait for page to stabilize
+
+                // DEBUG: Screenshot the page before attempting invite
+                const debugShot = `debug_before_invite_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: debugShot, quality: 60, type: 'jpeg' });
+                    console.log(`   [DEBUG] Screenshot saved: ${debugShot}`);
+                } catch (e) { console.log('   [DEBUG] Screenshot failed'); }
 
                 const result = await page.evaluate(async (targetEmail) => {
                     const sleep = (ms: number) => new Promise(r => setTimeout(r, 100)); // Faster sleep
