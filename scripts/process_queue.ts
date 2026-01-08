@@ -446,29 +446,30 @@ async function runPuppeteerQueue() {
                         (checkbox as HTMLElement).click();
                         await sleep(1000);
 
-                        // 3. Find Delete Icon (Trash Can) - Usually appears in a bottom bar or top action bar
-                        // Look for button with aria-label remove/delete or svg with specific path? 
-                        // Let's try aria-label first based on user description "icon hapus".
-                        // It might be a button with aria-label="Remove" or "Delete" or "Hapus"
+                        // 3. Find Delete Icon (Trash Can) 
+                        // Log (V4): TAG: SPAN, CLASS: vxQy1w, No Text/Aria
+                        // We try Aria first (best practice), then fallback to specific class from user log.
                         let deleteBtn = document.querySelector('button[aria-label*="Remove" i]') ||
                             document.querySelector('button[aria-label*="Delete" i]') ||
-                            document.querySelector('button[aria-label*="Hapus" i]');
+                            document.querySelector('button[aria-label*="Hapus" i]') ||
+                            document.querySelector('.vxQy1w') as HTMLElement; // Fallback from User Log
 
                         if (!deleteBtn) {
-                            // Fallback: look for button containing SVG of trash can (hard to detect via text).
-                            // User said "icon hapus".
-                            return { success: false, message: "Delete/Trash button not found after checking" };
+                            // Fallback: Try to find the "Trash" icon by looking for an SVG path? Too complex.
+                            // Let's rely on the class provided by user log for now.
+                            return { success: false, message: "Delete/Trash button not found (Tried: Aria & Class vxQy1w)" };
                         }
 
                         (deleteBtn as HTMLElement).click();
                         await sleep(1500); // Wait for popup
 
                         // 4. Confirm Popup "Remove from team"
-                        // Look for the RED button
+                        // Log (V4): TAG: SPAN, TEXT: "Remove from team"
                         const confirmBtn = findByText('button', 'Remove from team') ||
+                            findByText('span', 'Remove from team') ||
                             findByText('button', 'Hapus dari tim') ||
-                            document.querySelector('button[kind="destructive"]') || // Canva often uses this attribute
-                            document.querySelector('button[class*="danger"]');
+                            findByText('span', 'Hapus dari tim') ||
+                            document.querySelector('button[kind="destructive"]');
 
                         if (!confirmBtn) return { success: false, message: "Confirm Remove button not found in popup" };
 
