@@ -171,7 +171,9 @@ async function runPuppeteerQueue() {
                 // '--disable-setuid-sandbox', // REMOVED: Triggers "unsupported flag" warning
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
-                '--disable-features=IsolateOrigins,site-per-process'
+                '--disable-features=IsolateOrigins,site-per-process',
+                // Timezone spoofing to match IP (General Asia/Jakarta for ID IP)
+                '--timezone=Asia/Jakarta'
             ]
         });
 
