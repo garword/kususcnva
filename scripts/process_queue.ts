@@ -395,6 +395,12 @@ async function runPuppeteerQueue() {
                         await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
                     }
 
+                    // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
+                    console.log("   Waiting for success notification and refreshing page...");
+                    await new Promise(r => setTimeout(r, 3000)); // Wait for notification to appear
+                    await page.reload({ waitUntil: 'networkidle2' }); // Refresh to show user in list
+                    await new Promise(r => setTimeout(r, 2000)); // Wait for page to fully load
+
                     // CAPTURE SUCCESS SCREENSHOT & SEND
                     const shotPath = `success_${Date.now()}.jpg`;
                     try {
