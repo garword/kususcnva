@@ -36,6 +36,8 @@ jobs:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          CANVA_EMAIL: ${{ secrets.CANVA_EMAIL }}
+          CANVA_PASSWORD: ${{ secrets.CANVA_PASSWORD }}
         run: npm run auto-kick
       
       - name: Upload kick log (if exists)

@@ -113,39 +113,81 @@ async function kickExpiredUsers() {
         await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
         await randomDelay(2000, 4000);
 
-        // Login Step 1: Email
-        const emailInput = await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 15000 });
+        // STEP 1: Click "Continue with email" button
+        console.log("   [1/5] Looking for 'Continue with email' button...");
+        await randomDelay(1000, 2000);
+
+        const continueWithEmailBtn = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const btn = buttons.find(b => b.textContent?.includes('Continue with email') || b.textContent?.includes('Lanjutkan dengan email'));
+            if (btn) {
+                btn.click();
+                return true;
+            }
+            return false;
+        });
+
+        if (!continueWithEmailBtn) console.log("   'Continue with email' button not found, trying user input...");
+        await randomDelay(1200, 2500);
+
+        // STEP 2: Enter Email
+        console.log("   [2/5] Entering Email...");
+        const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 15000 });
         if (emailInput) await humanType(emailInput, CANVA_EMAIL);
 
-        // Find Continue
-        const continueBtn = await page.evaluateHandle(() => {
-            return Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Continue')) ||
-                Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Lanjutkan'));
+        // STEP 3: Click "Continue"
+        console.log("   [3/5] Clicking Continue...");
+        await randomDelay(800, 1500);
+
+        const continueClicked = await page.evaluate(() => {
+            const spans = Array.from(document.querySelectorAll('span'));
+            const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue' || s.textContent?.trim() === 'Lanjutkan');
+            if (continueSpan) {
+                const button = continueSpan.closest('button');
+                if (button) {
+                    button.click();
+                    return true;
+                }
+            }
+            return false;
         });
-        if (continueBtn) {
-            await (continueBtn as any).click();
-            await randomDelay(2000, 4000);
+
+        if (!continueClicked) await emailInput?.press('Enter');
+        await randomDelay(2500, 4000); // Wait for password field transition
+
+        // STEP 4: Password
+        console.log("   [4/5] Waiting for password field...");
+        // Re-fetch selector to avoid "Detached Node" error
+        const inputSelector = 'input[type="password"], input.bCVoGQ';
+        await page.waitForSelector(inputSelector, { timeout: 15000 });
+        const passInput = await page.$(inputSelector);
+
+        if (passInput) {
+            console.log("   [4/5] Entering Password...");
+            await randomDelay(500, 1000);
+            await humanType(passInput, CANVA_PASSWORD);
         } else {
-            await page.keyboard.press('Enter');
-            await randomDelay(2000, 4000);
+            throw new Error("Password input field not found after wait.");
         }
 
-        // Login Step 2: Password
-        const passSelector = 'input[type="password"]';
-        await page.waitForSelector(passSelector, { timeout: 15000 });
-        const passInput = await page.$(passSelector);
-        if (passInput) await humanType(passInput, CANVA_PASSWORD);
+        // STEP 5: Click Log in
+        console.log("   [5/5] Clicking Log in...");
+        await randomDelay(1000, 2000);
 
-        // Find Log in
-        const loginBtn = await page.evaluateHandle(() => {
-            return Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Log in')) ||
-                Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('Masuk'));
+        const loginClicked = await page.evaluate(() => {
+            const spans = Array.from(document.querySelectorAll('span'));
+            const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in' || s.textContent?.trim() === 'Masuk');
+            if (loginSpan) {
+                const button = loginSpan.closest('button');
+                if (button) {
+                    button.click();
+                    return true;
+                }
+            }
+            return false;
         });
-        if (loginBtn) {
-            await (loginBtn as any).click();
-        } else {
-            await page.keyboard.press('Enter');
-        }
+
+        if (!loginClicked) await passInput?.press('Enter');
 
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
         console.log("✅ Login success!");

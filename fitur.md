@@ -1,114 +1,86 @@
-# Fitur & Logika Bot Canva Premium
+# Fitur & Logika Bot Canva Premium (V2.0)
 
-Dokumen ini menjelaskan seluruh fitur dan logika teknis dari bot Canva.
+Dokumen ini menjelaskan fungsionalitas teknis terbaru dari bot, termasuk sistem login prioritas email dan logika otomatisasi cerdas.
 
 ## 👥 Fitur User (Member)
 
 ### 1. Pendaftaran & Profil
 - **Start Bot**: User mengetik `/start`.
-  - **Sistem Register**: Bot mendeteksi apakah user **Baru** atau **Lama**.
-  - **Auto-Generate**: User otomatis mendapatkan ID Database, Kode Referral, dan Tanggal Join.
-- **Profil Saya**: Menampilkan:
-  - Status langganan aktif & tanggal kedaluwarsa.
-  - Jumlah **Poin Referral** yang dimiliki.
-  - Link Referral unik (`t.me/bot?start=refID`).
+  - **Sistem Register**: Deteksi user Baru/Lama, Auto-Generate Database ID.
+- **Profil Saya**: Menampilkan status langganan, saldo Poin Referral, dan link referral unik.
 
 ### 2. Akses Bot (Force Subscribe)
-- **Sistem Gratis**: Bot ini gratis sepenuhnya.
-- **Syarat Akses**: User WAJIB subscribe/join ke channel/grup yang ditentukan (Maksimal 3 Link).
-- **Validasi Otomatis**:
-  1. User klik `/start` atau command lain.
-  2. Bot mengecek status membership user ke **3 Channel Wajib**.
-  3. Jika belum join, akses dikunci & bot menampilkan tombol link channel.
-  4. Tombol "✅ Sudah Bergabung" melakukan cek ulang.
+- **Gatekeeper**: User wajib join channel sponsor sebelum bisa akses menu utama.
+- **Auto-Check**: Bot otomatis memvalidasi status membership user setiap kali ada interaksi.
 
-### 3. Sistem Varian Paket & Referral (Points)
-Mendukung 2 varian paket akses:
-
-#### a. Paket 1 Bulan (Free)
-- **Harga**: 0 Poin (Gratis Langsung).
-- **Syarat**: Hanya bisa memiliki **1 Akun Aktif** per ID Telegram.
-  - Jika user masih punya akun aktif -> Bot menolak invite baru.
-  - Harus tunggu expired untuk invite ulang.
-
-#### b. Paket 6 Bulan (Premium)
-- **Harga**: 6 Poin Referral per Invite.
-- **Mekanisme Invite (Pay-as-you-go)**:
-  - User memilih paket ini di Menu Paket (Set Preferensi).
-  - Saat mengetik `/aktivasi [email]`, bot mengecek saldo poin.
-  - **Poin Cukup (≥6)**: Bot memotong 6 poin **saat itu juga** & memproses invite.
-  - **Poin Kurang**: Invite ditolak.
-- **Keunggulan**: **Bisa Invite Banyak Akun (Multi-Invite)**.
-  - Tidak ada limit akun aktif. Selama punya poin, user bisa invite email sebanyak-banyaknya.
-
-#### c. Logika Poin Referral (Strict)
-- **Aturan**: Poin hanya diberikan jika **User BARU** sukses terdaftar di database.
-- **User Lama**: Jika user yang sudah pernah pakai bot mengklik link referral, poin **TIDAK** bertambah. Ini mencegah kecurangan/farming poin.
+### 3. Sistem Pembayaran & Referral
+- **Paket 1 Bulan (Gratis/Trial)**: 1 User = 1x Klaim.
+- **Paket 6 Bulan (Premium)**: Sistem Pay-as-you-go menggunakan **Poin Referral** (6 Poin per invite).
+- **Anti-Farming**: Poin referral hanya masuk jika user *benar-benar baru* di database.
 
 ### 4. Aktivasi (Invite Canva)
-- **Command**: `/aktivasi [email]`.
-- **Logika**:
-  1. Cek Preferensi Paket user (1 Bulan / 6 Bulan).
-  2. **Jika 1 Bulan**: Cek apakah ada langganan aktif? Jika ada -> Tolak.
-  3. **Jika 6 Bulan**: Cek apakah poin cukup (6)? Jika cukup -> Potong Poin -> Lanjut.
-  4. Masukkan email antrian `pending_invite`.
-  5. Trigger GitHub Action untuk eksekusi invite.
+- **Command**: `/aktivasi [email]`
+- **Proses**: Verifikasi eligibility -> Masuk Antrian Database -> Eksekusi via GitHub Actions.
 
 ---
 
-## 👨‍💻 Fitur Admin
+## 🤖 Sistem Otomatisasi (Cerdas)
 
-### 1. Manajemen Force Subscribe
-- **Set Channel**: `/set_channels @channel1, @channel2` (Untuk set channel wajib join).
-- **Cek Channel**: `/channels` (Melihat list channel aktif).
-- **Logika**: Config disimpan di Database `settings`, prioritas lebih tinggi dari Environment Variable.
+Sistem otomatisasi kini menggunakan kombinasi strategi untuk keandalan maksimal.
 
-### 2. Manajemen Cookie (Canva Akun)
-- **Set Cookie**: `/set_cookie [text]` atau Upload File.
-- **Support**:
-  - Akun **Canva Pro** (Owner/Admin).
-  - Akun **Canva Edu** (Teacher/Admin) -> Otomatis deteksi & support tombol "Add Student".
-- **Validasi**: Bot otomatis cek validitas cookie & ambil Team ID.
+### 1. Smart Authentication (Login Hybrid)
+Bot memiliki 3 lapisan strategi login:
+1.  **Prioritas 1: Email & Password**  
+    Bot login layaknya manusia menggunakan kredensial yang ada di Environment Variable (`CANVA_EMAIL`, `CANVA_PASSWORD`). Ini mengatasi isu cookie expired.
+2.  **Prioritas 2: Cookie Session (Fallback)**  
+    Jika login gagal (misal kena Captcha), bot otomatis switch menggunakan **Cookie** yang tersimpan di Database.
+3.  **Visual Verification**: Setiap langkah login difoto (screenshot) dan dikirim ke log admin.
 
-### 3. Broadcast Pesan
-- **Command**: `/broadcast [pesan]` atau Reply pesan dengan `/broadcast`.
-- **Fungsi**: Mengirim pesan massal ke seluruh user.
-- **Fitur**: Anti-Flood (delay 30ms), Laporan Sukses/Gagal/Blokir.
+### 2. Smart Invite (Navigasi Akurat)
+- **Navigasi**: Langsung menuju URL `/settings/people`.
+- **Deteksi UI**:
+  - Menggunakan **Aria Label** (`Enter email for person 1`) untuk mencari kolom input yang tepat.
+  - Menangani **Popup** invite dengan menunggu animasi selesai.
+  - Klik tombol "Send invitations" secara presisi.
 
-### 4. Test Invite
-- **Command**: `/test_invite [email]`.
-- **Fungsi**: Bypass semua syarat (poin/paket) untuk ngetes invite langsung.
+### 3. Smart Kick (Penghapusan User Expired)
+Logika penghapusan user yang sudah habis masa aktifnya:
+1.  **Search**: Mencari email user di list anggota.
+2.  **Select**: Mencentang **Checkbox** user target.
+3.  **Action**: Klik ikon **Tong Sampah** (`.vxQy1w` / `aria-label="Remove"`).
+4.  **Confirm**: Klik tombol konfirmasi merah ("Remove from team") di popup.
 
----
-
-## 🤖 Sistem Otomatisasi (Automation)
-
-### 1. Auto-Invite Queue (Antrian)
-- **Trigger**: Script `process_queue.ts` via GitHub Actions.
-- **Logika**:
-  - Login Canva pakai Puppeteer.
-  - Deteksi tipe akun (Pro vs Edu) -> Sesuaikan tombol ("Invite people" vs "Add students").
-  - Kirim invite -> Update DB -> Reset Product Selection ke Default (1 Bulan).
-  - Buat Log Subscription di DB.
-
-### 2. Auto-Kick (Expired Users)
-- **Trigger**: Script `process_queue.ts` via GitHub Actions (Jalan 1 Jam Sekali).
-- **Logika**:
-  - Cek tabel `subscriptions` yang `end_date < sekarang`.
-  - Hapus user dari Tim Canva (Remove User).
-  - Ubah status jadi `kicked`.
-  - Kirim notifikasi "Masa Aktif Habis".
+### 4. Team Quota Monitoring (Satpam Kuota)
+- **Real-time Monitoring**: Setiap bot bekerja, ia membaca header "People (N)".
+- **Database Recording**: Jumlah anggota tim disimpan ke database `settings`.
+- **Warning System**: Jika anggota mencapai **500 (Max Slot)**, bot mengirim peringatan ke log sistem bahwa invite mungkin akan gagal.
 
 ---
 
-## 🛠️ Struktur Database (Schema)
+## 👨‍💻 Fitur Admin & Tools
 
-| Tabel | Fungsi | Kolom Baru / Penting |
-|---|---|---|
-| `users` | Data Profil | `referral_code`, `referred_by`, `referral_points`, `selected_product_id`, `joined_at` |
-| `products` | Daftar Paket | `name` (1 Bulan / 6 Bulan), `duration_days` |
-| `subscriptions` | Data Langganan | `start_date`, `end_date`, `status` |
-| `settings` | Config Bot | `force_sub_channels`, `canva_cookie` |
+### 1. Inspector Tool (New)
+- **Script**: `npx ts-node scripts/inspect_selector.ts`
+- **Fungsi**: Membuka browser visual di mana admin bisa klik elemen web apa saja untuk mendapatkan selector CSS/XPath/AriaLabel yang akurat. Berguna untuk debugging jika Canva update tampilan.
+
+### 2. Manajemen Force Subscribe
+- `/set_channels`: Mengatur channel wajib join.
+- `/channels`: Melihat list channel aktif.
+
+### 3. Broadcast Masal
+- Mengirim pesan ke seluruh user database dengan anti-flood protection.
+
+### 4. Admin Log (Visual)
+- Semua aktivitas bot (Login, Invite Sukses/Gagal, Kick, Error) disertai **FOTO BUKTI (Screenshot)** yang dikirim ke channel log admin.
 
 ---
-*Dokumen ini diperbarui otomatis sesuai update terakhir: Strict Referral & Pay-as-you-go Logic.*
+
+## 🛠️ Struktur Database (Update)
+
+Tabel `settings` kini menyimpan data dinamis penting:
+- `canva_cookie`: Cadangan sesi login.
+- `canva_team_members_count`: Jumlah anggota tim saat ini (untuk monitoring kuota).
+- `force_sub_channels`: Konfigurasi channel wajib.
+
+---
+*Dokumen ini diperbarui untuk versi bot dengan Login Email/Pass & Smart Selectors.*
