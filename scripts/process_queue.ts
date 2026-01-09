@@ -178,8 +178,28 @@ async function runPuppeteerQueue() {
         });
 
         // Use Incognito Context
-        const context = await browser.createBrowserContext();
+        const context = browser.defaultBrowserContext();
         const page = await context.newPage();
+
+        // STEALTH EVASION: Inject Scripts before page load
+        await page.evaluateOnNewDocument(() => {
+            // 1. Remove navigator.webdriver
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+            // 2. Spoof Languages
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+            // 3. Spoof Plugins (Simple mock)
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+
+            // 4. WebGL Vendor Spoofing (Google Inc. -> Intel/NVIDIA)
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function (parameter) {
+                if (parameter === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
+                return getParameter(parameter);
+            };
+        });
 
         // Set realistic user-agent (Stealth Plugin handles most fingerprints, but UA is good to set)
         await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
