@@ -352,7 +352,7 @@ async function runPuppeteerQueue() {
                     if (!loginClicked) await passInput.press('Enter');
                 }
 
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
                 console.log("   ✅ Login Submitted. checking access...");
                 await randomDelay(3000, 5000);
 
