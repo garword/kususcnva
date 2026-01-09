@@ -384,18 +384,18 @@ async function runPuppeteerQueue() {
 
             } catch (loginErr: any) {
                 console.error("❌ Login Failed:", loginErr);
-                const shotPath = `login_fail_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: shotPath });
-                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, `❌ <b>Login Failed</b>\nReason: ${loginErr.message}`);
-                    if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
-                } catch (e) { console.error("Screenshot failed", e); }
-
-                // DISABLED COOKIE FALLBACK - Force Email/Password Login Only
-                throw new Error("Email/Password login required. Cookie fallback disabled.");
+                // Notification logic...
             }
-        } else {
-            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env");
+        }
+
+        // FINAL AUTH CHECK
+        if (!isLoggedIn) {
+            console.error("❌ CRITICAL: Authentication Failed.");
+            if (!canvaEmail || !canvaPassword) {
+                throw new Error("Login failed (Cookie invalid) AND No Email/Password in .env");
+            } else {
+                throw new Error("All login methods failed (Cookie & Password). Check credentials/IP.");
+            }
         }
 
         // COOKIE LOADING DISABLED - Using Fresh Login Only
