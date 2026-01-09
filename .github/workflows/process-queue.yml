@@ -49,5 +49,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: process-log-${{ github.run_number }}
-          path: logs/*.log
+          path: |
+            logs/*.log
+            *.jpg
           if-no-files-found: ignore
