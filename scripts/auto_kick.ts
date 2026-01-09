@@ -89,7 +89,7 @@ async function kickExpiredUsers() {
 
     const browser = await puppeteer.launch({
         executablePath: chromePath,
-        headless: false, // Debug mode for visibility
+        headless: process.env.CI ? "new" : false, // "new" for CI (GitHub Actions), false for Local Debug
         defaultViewport: null,
         ignoreDefaultArgs: ['--enable-automation'],
         args: [

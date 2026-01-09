@@ -161,7 +161,7 @@ async function runPuppeteerQueue() {
 
         const browser = await puppeteer.launch({
             executablePath: chromePath,
-            headless: false,
+            headless: process.env.CI ? "new" : false,
             defaultViewport: null,
             ignoreDefaultArgs: ['--enable-automation'],
             args: [
