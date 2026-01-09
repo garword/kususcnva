@@ -627,291 +627,282 @@ async function runPuppeteerQueue() {
 
                         throw new Error("No success toast detected. Marked as FAILED.");
                     }
-                } else {
-                    // Fallback if toast missed but no error
-                    console.log("   [DEBUG] Toast missed, but flow completed without error.");
-                    result = { success: true, message: "Invitation flow completed (Implicit Success)" };
-                }
-            } catch (e) {
-                // Still consider success if we reached here without throwing earlier errors
-                console.log("   [DEBUG] Toast timeout, but no sync error. Assuming success.");
-                result = { success: true, message: "Invitation sent (Toast check timeout)" };
-            }
+                    // End of validation check
 
-        } catch (error: any) {
-            if (error.message.includes("Security reasons") || error.message.includes("RRS-")) {
-                console.log("⚠️ Security Block Detected! Attempting fallback to Invite Link...");
+                } catch (error: any) {
+                    if (error.message.includes("Security reasons") || error.message.includes("RRS-")) {
+                        console.log("⚠️ Security Block Detected! Attempting fallback to Invite Link...");
 
-                // FALLBACK: TRY TO GET INVITE LINK
-                try {
-                    // Click "Copy invite link" button
-                    const linkButton = await page.evaluateHandle(() => {
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
-                    });
-
-                    if (linkButton) {
-                        await (linkButton as any).click();
-                        await new Promise(r => setTimeout(r, 1000));
-
-                        // Get from clipboard (requires permission, fallback to button finding)
-                        // Better: Check if there is an input field with the link
-                        const link = await page.evaluate(() => {
-                            return navigator.clipboard.readText().catch(() => "");
-                        });
-
-                        if (link && link.startsWith("http")) {
-                            result = { success: true, message: link }; // Message is the LINK itself
-                        } else {
-                            // Fallback: Try to find input type=text containing 'canva.com'
-                            const linkInput = await page.evaluate(() => {
-                                const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
-                                return inputs.find(i => i.value.includes("canva.com"))?.value || "";
+                        // FALLBACK: TRY TO GET INVITE LINK
+                        try {
+                            // Click "Copy invite link" button
+                            const linkButton = await page.evaluateHandle(() => {
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
                             });
-                            if (linkInput) result = { success: true, message: linkInput };
-                            else throw new Error("Could not retrieve link from clipboard or input");
+
+                            if (linkButton) {
+                                await (linkButton as any).click();
+                                await new Promise(r => setTimeout(r, 1000));
+
+                                // Get from clipboard (requires permission, fallback to button finding)
+                                // Better: Check if there is an input field with the link
+                                const link = await page.evaluate(() => {
+                                    return navigator.clipboard.readText().catch(() => "");
+                                });
+
+                                if (link && link.startsWith("http")) {
+                                    result = { success: true, message: link }; // Message is the LINK itself
+                                } else {
+                                    // Fallback: Try to find input type=text containing 'canva.com'
+                                    const linkInput = await page.evaluate(() => {
+                                        const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
+                                        return inputs.find(i => i.value.includes("canva.com"))?.value || "";
+                                    });
+                                    if (linkInput) result = { success: true, message: linkInput };
+                                    else throw new Error("Could not retrieve link from clipboard or input");
+                                }
+                            } else {
+                                throw new Error("Copy Link button not found");
+                            }
+                        } catch (fallbackError: any) {
+                            console.error("Fallback failed:", fallbackError);
+                            result = { success: false, message: error.message + " (Fallback also failed)" };
                         }
                     } else {
-                        throw new Error("Copy Link button not found");
+                        result = { success: false, message: error.message };
                     }
-                } catch (fallbackError: any) {
-                    console.error("Fallback failed:", fallbackError);
-                    result = { success: false, message: error.message + " (Fallback also failed)" };
                 }
-            } else {
-                result = { success: false, message: error.message };
-            }
-        }
 
-        if (result.success) {
-            console.log(`✅ Invited: ${email}`);
-            successInvites++;
+                if (result.success) {
+                    console.log(`✅ Invited: ${email}`);
+                    successInvites++;
 
-            // Create Subscription Record
-            const subId = `sub_${Date.now()}_${userId}`;
-            await sql(`
+                    // Create Subscription Record
+                    const subId = `sub_${Date.now()}_${userId}`;
+                    await sql(`
                         INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
                         VALUES (?, ?, ?, datetime('now'), datetime('now', '+${duration} days'), 'active')
                     `, [subId, userId, prodId]);
 
-            // Update User Status & Reset Product to Default (1)
-            await sql(`UPDATE users SET status = 'active', selected_product_id = 1 WHERE id = ?`, [userId]);
+                    // Update User Status & Reset Product to Default (1)
+                    await sql(`UPDATE users SET status = 'active', selected_product_id = 1 WHERE id = ?`, [userId]);
 
-            if (userId > 0) {
-                if (result.message.startsWith("http")) {
-                    // SEND LINK TO USER
-                    await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                    if (userId > 0) {
+                        if (result.message.startsWith("http")) {
+                            // SEND LINK TO USER
+                            await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                        } else {
+                            // NORMAL SUCCESS
+                            await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                        }
+                    }
+
+                    // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
+                    console.log("   Waiting 5 seconds for success notification...");
+                    await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds as requested by user
+                    console.log("   Refreshing page to show user in list...");
+                    await page.reload({ waitUntil: 'networkidle2' }); // Refresh to show user in list
+                    await new Promise(r => setTimeout(r, 2000)); // Wait for page to fully load
+
+                    // CAPTURE SUCCESS SCREENSHOT & SEND
+                    const shotPath = `success_${Date.now()}.jpg`;
+                    try {
+                        await page.screenshot({ path: shotPath, quality: 60, type: 'jpeg' });
+                        const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
+                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
+                        if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+                    } catch (shotErr) {
+                        console.error("Screenshot failed:", shotErr);
+                        await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
+                    }
+
                 } else {
-                    // NORMAL SUCCESS
-                    await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                    console.log(`❌ Failed: ${result.message}`);
+
+                    // Log diagnostic info if available
+                    if ((result as any).debug) {
+                        const debug = (result as any).debug;
+                        console.log(`   [DIAGNOSTIC INFO]:`);
+                        console.log(`      - Button found: ${debug.buttonFound}`);
+                        console.log(`      - Checks performed: ${debug.checked}/20`);
+                        if (debug.lastButtonState) {
+                            console.log(`      - Button disabled prop: ${debug.lastButtonState.disabled}`);
+                            console.log(`      - Button aria-disabled: ${debug.lastButtonState.ariaDisabled}`);
+                            console.log(`      - Button className: ${debug.lastButtonState.className}`);
+                        } else {
+                            console.log(`      - Button element not found in DOM`);
+                        }
+                    }
+
+                    failInvites++;
+                    await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+
+                    // CAPTURE FAIL SCREENSHOT
+                    const errShotPath = `fail_${Date.now()}.jpg`;
+                    try {
+                        await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
+                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
+                        if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
+                    } catch (shotErr) { console.error("Screenshot failed:", shotErr); }
+                }
+
+            } catch (e: any) {
+                console.error(e);
+                failInvites++;
+
+                // CAPTURE ERROR SCREENSHOT
+                const errShotPath = `error_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
+                    if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
+                } catch (shotErr) {
+                    console.error("Screenshot failed:", shotErr);
+                    await sendSystemLog(`❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
                 }
             }
+        }
 
-            // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
-            console.log("   Waiting 5 seconds for success notification...");
-            await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds as requested by user
-            console.log("   Refreshing page to show user in list...");
-            await page.reload({ waitUntil: 'networkidle2' }); // Refresh to show user in list
-            await new Promise(r => setTimeout(r, 2000)); // Wait for page to fully load
+        // ========================================================================
+        // PROCESS KICKS
+        // ========================================================================
+        for (const user of expiredUsers.rows) {
+            const email = user.email as string;
+            const userId = user.id as number;
+            const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
+            const planName = user.plan_name || 'Unknown';
+            const endDate = user.end_date ? new Date(user.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-';
 
-            // CAPTURE SUCCESS SCREENSHOT & SEND
-            const shotPath = `success_${Date.now()}.jpg`;
+            console.log(`🦶 Processing Kick: ${email}`);
+
             try {
-                await page.screenshot({ path: shotPath, quality: 60, type: 'jpeg' });
-                const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
-                await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
-                if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
-            } catch (shotErr) {
-                console.error("Screenshot failed:", shotErr);
-                await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
-            }
+                // Fix: Default to /settings/people for finding the user
+                const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
+                await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                await new Promise(r => setTimeout(r, 2000));
 
-        } else {
-            console.log(`❌ Failed: ${result.message}`);
+                // 0. Extract Member Count (Monitoring 500 Limit)
+                const teamMemberCount = await page.evaluate(() => {
+                    const h1 = Array.from(document.querySelectorAll('h1')).find(el => el.textContent?.includes('People') || el.textContent?.includes('Anggota'));
+                    if (h1) {
+                        const match = h1.textContent?.match(/\((\d+)\)/);
+                        return match ? parseInt(match[1]) : 0;
+                    }
+                    return 0;
+                });
 
-            // Log diagnostic info if available
-            if ((result as any).debug) {
-                const debug = (result as any).debug;
-                console.log(`   [DIAGNOSTIC INFO]:`);
-                console.log(`      - Button found: ${debug.buttonFound}`);
-                console.log(`      - Checks performed: ${debug.checked}/20`);
-                if (debug.lastButtonState) {
-                    console.log(`      - Button disabled prop: ${debug.lastButtonState.disabled}`);
-                    console.log(`      - Button aria-disabled: ${debug.lastButtonState.ariaDisabled}`);
-                    console.log(`      - Button className: ${debug.lastButtonState.className}`);
+                if (teamMemberCount > 0) {
+                    console.log(`📊 Team Slots: ${teamMemberCount}/500`);
+                    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_members_count', ?)", [teamMemberCount.toString()]);
+
+                    if (teamMemberCount >= 500) {
+                        console.error("⚠️ TEAM FULL! Slots reached 500/500.");
+                        await sendSystemLog(`⚠️ <b>TEAM FULL WARNING!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
+                    }
+                }
+
+                const result = await page.evaluate(async (targetEmail: string) => {
+                    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+                    try {
+                        const findByText = (tag: string, text: string) => Array.from(document.querySelectorAll(tag)).find(el => el.textContent?.toLowerCase().includes(text.toLowerCase())) as HTMLElement;
+
+                        // 1. Find the User Row
+                        // Strategy: Find element with email text, then go up to TR or row div
+                        const allElements = Array.from(document.querySelectorAll('div, span, td'));
+                        const emailEl = allElements.find(el => el.textContent?.trim() === targetEmail);
+
+                        if (!emailEl) return { success: false, message: "User Email not found in list" };
+
+                        let row = emailEl.parentElement;
+                        // Find a parent that looks like a row (contains checkboxes)
+                        while (row && row.tagName !== 'TR' && !row.querySelector('input[type="checkbox"]')) {
+                            row = row.parentElement;
+                            if (!row || row === document.body) break;
+                        }
+
+                        if (!row) return { success: false, message: "Row container not found" };
+
+                        // 2. Click Checkbox
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        if (!checkbox) return { success: false, message: "Checkbox not found in row" };
+
+                        (checkbox as HTMLElement).click();
+                        await sleep(1000);
+
+                        // 3. Find Delete Icon (Trash Can) 
+                        // Log (V4): TAG: SPAN, CLASS: vxQy1w, No Text/Aria
+                        // We try Aria first (best practice), then fallback to specific class from user log.
+                        let deleteBtn = document.querySelector('button[aria-label*="Remove" i]') ||
+                            document.querySelector('button[aria-label*="Delete" i]') ||
+                            document.querySelector('button[aria-label*="Hapus" i]') ||
+                            document.querySelector('.vxQy1w') as HTMLElement; // Fallback from User Log
+
+                        if (!deleteBtn) {
+                            // Fallback: Try to find the "Trash" icon by looking for an SVG path? Too complex.
+                            // Let's rely on the class provided by user log for now.
+                            return { success: false, message: "Delete/Trash button not found (Tried: Aria & Class vxQy1w)" };
+                        }
+
+                        (deleteBtn as HTMLElement).click();
+                        await sleep(1500); // Wait for popup
+
+                        // 4. Confirm Popup "Remove from team"
+                        // Log (V4): TAG: SPAN, TEXT: "Remove from team"
+                        const confirmBtn = findByText('button', 'Remove from team') ||
+                            findByText('span', 'Remove from team') ||
+                            findByText('button', 'Hapus dari tim') ||
+                            findByText('span', 'Hapus dari tim') ||
+                            document.querySelector('button[kind="destructive"]');
+
+                        if (!confirmBtn) return { success: false, message: "Confirm Remove button not found in popup" };
+
+                        (confirmBtn as HTMLElement).click();
+                        await sleep(2000);
+
+                        return { success: true };
+
+                    } catch (e: any) { return { success: false, message: e.message }; }
+                }, email);
+
+                if (result.success) {
+                    console.log(`✅ Kicked: ${email}`);
+                    successKicks++;
+                    await sql(`UPDATE subscriptions SET status = 'kicked' WHERE user_id = ? AND status = 'active'`, [userId]);
+                    if (userId > 0) {
+                        await sendTelegram(userId, `⚠️ <b>Langganan Berakhir</b>\nAkses Canva Pro Anda telah berakhir pada ${endDate}.`);
+                    }
+
+                    const kickLog = `🦶 <b>User Kicked</b>\n👤 User: ${username} (ID: <code>${userId}</code>)\n📧 Email: <code>${email}</code>\n📦 Paket: ${planName}`;
+                    await sendSystemLog(kickLog);
+
                 } else {
-                    console.log(`      - Button element not found in DOM`);
-                }
-            }
-
-            failInvites++;
-            await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
-
-            // CAPTURE FAIL SCREENSHOT
-            const errShotPath = `fail_${Date.now()}.jpg`;
-            try {
-                await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
-                await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
-                if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
-            } catch (shotErr) { console.error("Screenshot failed:", shotErr); }
-        }
-
-    } catch (e: any) {
-        console.error(e);
-        failInvites++;
-
-        // CAPTURE ERROR SCREENSHOT
-        const errShotPath = `error_${Date.now()}.jpg`;
-        try {
-            await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
-            await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
-            if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
-        } catch (shotErr) {
-            console.error("Screenshot failed:", shotErr);
-            await sendSystemLog(`❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
-        }
-    }
-}
-
-// ========================================================================
-// PROCESS KICKS
-// ========================================================================
-for (const user of expiredUsers.rows) {
-    const email = user.email as string;
-    const userId = user.id as number;
-    const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
-    const planName = user.plan_name || 'Unknown';
-    const endDate = user.end_date ? new Date(user.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-';
-
-    console.log(`🦶 Processing Kick: ${email}`);
-
-    try {
-        // Fix: Default to /settings/people for finding the user
-        const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
-        await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 2000));
-
-        // 0. Extract Member Count (Monitoring 500 Limit)
-        const teamMemberCount = await page.evaluate(() => {
-            const h1 = Array.from(document.querySelectorAll('h1')).find(el => el.textContent?.includes('People') || el.textContent?.includes('Anggota'));
-            if (h1) {
-                const match = h1.textContent?.match(/\((\d+)\)/);
-                return match ? parseInt(match[1]) : 0;
-            }
-            return 0;
-        });
-
-        if (teamMemberCount > 0) {
-            console.log(`📊 Team Slots: ${teamMemberCount}/500`);
-            await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_members_count', ?)", [teamMemberCount.toString()]);
-
-            if (teamMemberCount >= 500) {
-                console.error("⚠️ TEAM FULL! Slots reached 500/500.");
-                await sendSystemLog(`⚠️ <b>TEAM FULL WARNING!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
-            }
-        }
-
-        const result = await page.evaluate(async (targetEmail: string) => {
-            const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-            try {
-                const findByText = (tag: string, text: string) => Array.from(document.querySelectorAll(tag)).find(el => el.textContent?.toLowerCase().includes(text.toLowerCase())) as HTMLElement;
-
-                // 1. Find the User Row
-                // Strategy: Find element with email text, then go up to TR or row div
-                const allElements = Array.from(document.querySelectorAll('div, span, td'));
-                const emailEl = allElements.find(el => el.textContent?.trim() === targetEmail);
-
-                if (!emailEl) return { success: false, message: "User Email not found in list" };
-
-                let row = emailEl.parentElement;
-                // Find a parent that looks like a row (contains checkboxes)
-                while (row && row.tagName !== 'TR' && !row.querySelector('input[type="checkbox"]')) {
-                    row = row.parentElement;
-                    if (!row || row === document.body) break;
+                    failKicks++;
+                    await sendSystemLog(`⚠️ <b>Kick Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
                 }
 
-                if (!row) return { success: false, message: "Row container not found" };
-
-                // 2. Click Checkbox
-                const checkbox = row.querySelector('input[type="checkbox"]');
-                if (!checkbox) return { success: false, message: "Checkbox not found in row" };
-
-                (checkbox as HTMLElement).click();
-                await sleep(1000);
-
-                // 3. Find Delete Icon (Trash Can) 
-                // Log (V4): TAG: SPAN, CLASS: vxQy1w, No Text/Aria
-                // We try Aria first (best practice), then fallback to specific class from user log.
-                let deleteBtn = document.querySelector('button[aria-label*="Remove" i]') ||
-                    document.querySelector('button[aria-label*="Delete" i]') ||
-                    document.querySelector('button[aria-label*="Hapus" i]') ||
-                    document.querySelector('.vxQy1w') as HTMLElement; // Fallback from User Log
-
-                if (!deleteBtn) {
-                    // Fallback: Try to find the "Trash" icon by looking for an SVG path? Too complex.
-                    // Let's rely on the class provided by user log for now.
-                    return { success: false, message: "Delete/Trash button not found (Tried: Aria & Class vxQy1w)" };
-                }
-
-                (deleteBtn as HTMLElement).click();
-                await sleep(1500); // Wait for popup
-
-                // 4. Confirm Popup "Remove from team"
-                // Log (V4): TAG: SPAN, TEXT: "Remove from team"
-                const confirmBtn = findByText('button', 'Remove from team') ||
-                    findByText('span', 'Remove from team') ||
-                    findByText('button', 'Hapus dari tim') ||
-                    findByText('span', 'Hapus dari tim') ||
-                    document.querySelector('button[kind="destructive"]');
-
-                if (!confirmBtn) return { success: false, message: "Confirm Remove button not found in popup" };
-
-                (confirmBtn as HTMLElement).click();
-                await sleep(2000);
-
-                return { success: true };
-
-            } catch (e: any) { return { success: false, message: e.message }; }
-        }, email);
-
-        if (result.success) {
-            console.log(`✅ Kicked: ${email}`);
-            successKicks++;
-            await sql(`UPDATE subscriptions SET status = 'kicked' WHERE user_id = ? AND status = 'active'`, [userId]);
-            if (userId > 0) {
-                await sendTelegram(userId, `⚠️ <b>Langganan Berakhir</b>\nAkses Canva Pro Anda telah berakhir pada ${endDate}.`);
+            } catch (e: any) {
+                console.error(e);
+                failKicks++;
+                await sendSystemLog(`⚠️ <b>Kick Error</b>\nEmail: ${email}\nError: ${e.message}`);
             }
-
-            const kickLog = `🦶 <b>User Kicked</b>\n👤 User: ${username} (ID: <code>${userId}</code>)\n📧 Email: <code>${email}</code>\n📦 Paket: ${planName}`;
-            await sendSystemLog(kickLog);
-
-        } else {
-            failKicks++;
-            await sendSystemLog(`⚠️ <b>Kick Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
         }
 
-    } catch (e: any) {
-        console.error(e);
-        failKicks++;
-        await sendSystemLog(`⚠️ <b>Kick Error</b>\nEmail: ${email}\nError: ${e.message}`);
-    }
-}
+        await browser.close();
 
-await browser.close();
-
-const summary = `
+        const summary = `
 🏁 <b>Job Finished</b>
 ✅ Invites: ${successInvites} | Kicks: ${successKicks}
 ❌ Fails:   ${failInvites} | Failed Kicks: ${failKicks}
         `.trim();
-await sendSystemLog(summary);
-console.log("🏁 Queue Processing Finished.");
+        await sendSystemLog(summary);
+        console.log("🏁 Queue Processing Finished.");
 
     } catch (criticalError: any) {
-    console.error("CRITICAL ERROR:", criticalError);
-    await sendSystemLog(`⛔ <b>Critical Error</b>\n${criticalError.message}`);
-}
+        console.error("CRITICAL ERROR:", criticalError);
+        await sendSystemLog(`⛔ <b>Critical Error</b>\n${criticalError.message}`);
+    }
 }
 
 runPuppeteerQueue().catch(console.error);
