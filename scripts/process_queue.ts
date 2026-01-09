@@ -166,7 +166,7 @@ async function runPuppeteerQueue() {
         // ------------------------------------------
         // PROXY CONFIGURATION
         // ------------------------------------------
-        const proxyUrl = process.env.PROXY_URL; // Format: http://user:pass@ip:port
+        const proxyUrl = ""; // process.env.PROXY_URL; // 🚫 DISABLED PER USER REQUEST
         let proxyServer = "";
         let proxyUser = "";
         let proxyPass = "";
