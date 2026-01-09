@@ -37,16 +37,32 @@ function getChromePath() {
 }
 
 // Helper to notify specific user (e.g., successful invite)
-async function sendTelegram(chatId: string | number, message: string) {
-    if (!BOT_TOKEN) return;
+async function sendTelegram(chatId: string | number, message: string, options: any = {}) {
+    if (!BOT_TOKEN) return null;
     try {
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: chatId,
             text: message,
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
+            ...options
         });
+        return response.data.result.message_id;
     } catch (e: any) {
         console.error("Failed to send Telegram:", e.message);
+        return null;
+    }
+}
+
+async function deleteTelegramMessage(chatId: string | number, messageId: number) {
+    if (!BOT_TOKEN) return;
+    try {
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+            chat_id: chatId,
+            message_id: messageId
+        });
+        console.log(`🗑️ Deleted message ${messageId} for user ${chatId}`);
+    } catch (e: any) {
+        console.error("Failed to delete Telegram message:", e.message);
     }
 }
 
@@ -121,14 +137,14 @@ async function runPuppeteerQueue() {
         return;
     }
 
-    const startMsg = `⚙️ <b>Job Started</b>\n📊 Pending Invites: ${pendingInvites.rows.length}\n📊 Expired Users: ${expiredUsers.rows.length}`;
+    const startMsg = `⚙️ <b>Job Dimulai</b>\n📊 Antrian Invite: ${pendingInvites.rows.length}\n📊 User Expired: ${expiredUsers.rows.length}`;
     console.log(startMsg);
     await sendSystemLog(startMsg);
 
-    // 2. Prepare Browser
+    // 2. Siapkan Browser
     try {
         const chromePath = getChromePath();
-        if (!chromePath) throw new Error("Chrome not found!");
+        if (!chromePath) throw new Error("Chrome tidak ditemukan!");
 
         // Fetch settings
         const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
@@ -205,6 +221,10 @@ async function runPuppeteerQueue() {
 
         // Use Incognito Context
         const context = await browser.createBrowserContext();
+
+        // GRANT PERMISSIONS FOR CLIPBOARD ACCESS
+        await context.overridePermissions('https://www.canva.com', ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']);
+
         const page = await context.newPage();
 
         // Set realistic user-agent (Stealth Plugin handles most fingerprints, but UA is good to set)
@@ -265,8 +285,41 @@ async function runPuppeteerQueue() {
         const cookieFile = 'auth_cookies.json';
         let isLoggedIn = false;
 
-        // 1. TRY COOKIE LOGIN FIRST
-        if (fs.existsSync(cookieFile)) {
+        // 0. TRY DB COOKIE FIRST (Dynamic Update)
+        try {
+            console.log("🍪 Checking 'canva_cookie' in DB...");
+            const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+            if (cookieRes.rows.length > 0) {
+                const cookieStr = cookieRes.rows[0].value as string;
+                const cookies = JSON.parse(cookieStr);
+
+                await page.setCookie(...cookies);
+                console.log(`   ✅ Loaded ${cookies.length} cookies from DB.`);
+
+                // Verify Session
+                try {
+                    await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                } catch (navErr: any) {
+                    console.log(`   ⚠️ Session verify nav timeout (ignoring): ${navErr.message}`);
+                }
+                await randomDelay(3000, 5000);
+
+                if (!page.url().includes('login') && !page.url().includes('signup')) {
+                    console.log("   ✅ Session Restored via DB Cookie!");
+                    isLoggedIn = true;
+                } else {
+                    console.log("   ❌ DB Cookie Expired. Trying local file...");
+                    await sendSystemLog("⚠️ <b>PERINGATAN COOKIE MATI!</b>\n\nCookie di database terdeteksi EXPIRED atau INVALID saat login.\nMohon segera update dengan command <code>/set_cookie</code> agar bot tetap berjalan lancar.");
+                }
+            } else {
+                console.log("   ℹ️ No cookie in DB.");
+            }
+        } catch (e: any) {
+            console.error("   ⚠️ Failed to load DB cookie:", e.message);
+        }
+
+        // 1. TRY LOCAL COOKIE FILE (Fallback)
+        if (!isLoggedIn && fs.existsSync(cookieFile)) {
             try {
                 console.log(`🍪 Found ${cookieFile}. Attempting Session Restore...`);
                 const cookiesStr = fs.readFileSync(cookieFile, 'utf-8');
@@ -277,8 +330,12 @@ async function runPuppeteerQueue() {
                 console.log(`   Loaded ${cookies.length} cookies.`);
 
                 // Verify Session
-                await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'networkidle2' });
-                await randomDelay(2000, 3000);
+                try {
+                    await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                } catch (navErr: any) {
+                    console.log(`   ⚠️ Session verify nav timeout (ignoring if URL valid): ${navErr.message}`);
+                }
+                await randomDelay(3000, 5000);
 
                 if (page.url().includes('login') || page.url().includes('signup')) {
                     console.log("   ❌ Cookie Expired or Invalid. Falling back to Email Login...");
@@ -585,17 +642,37 @@ async function runPuppeteerQueue() {
                         VALUES (?, ?, ?, datetime('now'), datetime('now', '+${duration} days'), 'active')
                     `, [subId, userId, prodId]);
 
-                    // Update User Status & Reset Product to Default (1)
-                    await sql(`UPDATE users SET status = 'active', selected_product_id = 1 WHERE id = ?`, [userId]);
-
                     if (userId > 0) {
+                        let msgId = null;
                         if (result.message.startsWith("http")) {
                             // SEND LINK TO USER
-                            await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                            msgId = await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
                         } else {
-                            // NORMAL SUCCESS
-                            await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                            // SEND CODE TO USER (Monospaced & Professional)
+                            const code = result.message;
+                            msgId = await sendTelegram(userId,
+                                `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\nUntuk mengaktifkan Pro, ikuti langkah berikut:\n\n<b>1. Buka Halaman Join</b>\nKlik link ini: <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n\n<b>2. Masukkan Kode Identifikasi</b>\nSalin dan tempel kode ini:\n\n<code>${code}</code>\n<i>(Tekan kode untuk menyalin otomatis)</i>\n\n<b>3. Selesai!</b>\nKlik <b>"Join"</b> dan nikmati fitur Canva Pro. ✨\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`,
+                                { disable_web_page_preview: true }
+                            );
                         }
+
+                        // UPDATE STATUS ONLY IF MESSAGE SENT SUCCESSFULLY
+                        if (msgId) {
+                            // Update user status but KEEP selected_product_id (don't reset to 1)
+                            await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
+                            console.log(`✅ User ${userId} marked as ACTIVE after sending msg ${msgId}`);
+
+                            // AUTO DELETE
+                            console.log(`⏳ Scheduled deletion for message ${msgId} in 2 minutes...`);
+                            setTimeout(() => {
+                                deleteTelegramMessage(userId, msgId);
+                            }, 120 * 1000);
+                        } else {
+                            console.error(`❌ Failed to send Telegram message to ${userId}. User status NOT updated.`);
+                        }
+                    } else {
+                        // For manual testing without telegram ID, just update status
+                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
                     }
 
                     // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
@@ -697,8 +774,8 @@ async function runPuppeteerQueue() {
                     await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_members_count', ?)", [teamMemberCount.toString()]);
 
                     if (teamMemberCount >= 500) {
-                        console.error("⚠️ TEAM FULL! Slots reached 500/500.");
-                        await sendSystemLog(`⚠️ <b>TEAM FULL WARNING!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
+                        console.error("⚠️ TEAM FULL! Slot mencapai 500/500.");
+                        await sendSystemLog(`⚠️ <b>PERINGATAN SLOT PENUH!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
                     }
                 }
 
@@ -792,9 +869,9 @@ async function runPuppeteerQueue() {
         await browser.close();
 
         const summary = `
-🏁 <b>Job Finished</b>
-✅ Invites: ${successInvites} | Kicks: ${successKicks}
-❌ Fails:   ${failInvites} | Failed Kicks: ${failKicks}
+🏁 <b>Job Selesai</b>
+✅ Sukses Invite: ${successInvites} | Kicked: ${successKicks}
+❌ Gagal Invite:   ${failInvites} | Gagal Kick: ${failKicks}
         `.trim();
         await sendSystemLog(summary);
         console.log("🏁 Queue Processing Finished.");

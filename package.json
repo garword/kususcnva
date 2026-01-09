@@ -11,7 +11,11 @@
         "migrate": "ts-node scripts/migrate.ts",
         "get-cookie": "ts-node scripts/get_cookie.ts",
         "auto-kick": "ts-node scripts/auto_kick.ts",
-        "process-queue": "ts-node scripts/process_queue.ts"
+        "process-queue": "ts-node scripts/process_queue.ts",
+        "set-webhook": "ts-node scripts/set_webhook.ts",
+        "revoke-stale": "ts-node scripts/revoke_stale.ts",
+        "sync-members": "ts-node scripts/sync_member_count.ts",
+        "maintenance": "npm run revoke-stale && npm run process-queue && npm run sync-members"
     },
     "keywords": [
         "telegram",

@@ -1,4 +1,4 @@
-name: Process Queue (Invites & Kicks)
+name: Maintenance (Revoke, Invite, Kick, Sync)
 
 on:
   schedule:
@@ -42,7 +42,7 @@ jobs:
           CANVA_COOKIES: ${{ secrets.CANVA_COOKIES }}
           CANVA_USER_AGENT: ${{ secrets.CANVA_USER_AGENT }}
           LOG_CHANNEL_ID: ${{ secrets.LOG_CHANNEL_ID }}
-        run: npm run process-queue
+        run: npm run maintenance
       
       - name: Upload logs (if needed)
         if: failure()

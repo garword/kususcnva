@@ -1,0 +1,6 @@
+2026/01/09-17:19:53.060 3888 Creating DB E:\hasilkuuy\bot canva\chrome_profile\Default\IndexedDB\https_www.canva.com_0.indexeddb.leveldb since it was missing.
+2026/01/09-17:19:53.062 3888 Reusing MANIFEST E:\hasilkuuy\bot canva\chrome_profile\Default\IndexedDB\https_www.canva.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/09-17:19:53.069 3888 Level-0 table #5: started
+2026/01/09-17:19:53.069 3888 Level-0 table #5: 1826 bytes OK
+2026/01/09-17:19:53.070 3888 Delete type=0 #3
+2026/01/09-17:19:53.070 3888 Manual compaction at level-0 from '\x00\x02\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x03\x00\x00\x00' @ 0 : 0; will stop at (end)

@@ -131,16 +131,39 @@ async function start() {
 
     const page = await browser.newPage();
 
-    // DISABLED - Manual Login Required
-    /*
-    if (cookie) {
-        const cookieObjects = cookie.split(';').map(c => {
-            const [name, ...v] = c.trim().split('=');
-            return { name, value: v.join('='), domain: '.canva.com', path: '/' };
-        }).filter(c => c.name && c.value);
-        await page.setCookie(...cookieObjects);
+    // 0. RESTORE SESSION FROM ENV (FOR GITHUB ACTIONS)
+    if (process.env.CANVA_COOKIES) {
+        fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
     }
-    */
+    if (process.env.CANVA_USER_AGENT) {
+        fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
+    }
+
+    // 1. Session Restoration (Cookie & UA)
+    const COOKIE_PATH = 'auth_cookies.json';
+    const UA_PATH = 'auth_user_agent.txt';
+
+    if (fs.existsSync(UA_PATH)) {
+        const ua = fs.readFileSync(UA_PATH, 'utf8').trim();
+        console.log(`🎭 Using SAVED User-Agent: ${ua}`);
+        await page.setUserAgent(ua);
+    }
+
+    let isLoggedIn = false;
+    if (fs.existsSync(COOKIE_PATH)) {
+        console.log(`🍪 Found ${COOKIE_PATH}. Attempting Session Restore...`);
+        try {
+            const cookiesString = fs.readFileSync(COOKIE_PATH, 'utf8');
+            const cookies = JSON.parse(cookiesString);
+            if (Array.isArray(cookies) && cookies.length > 0) {
+                await page.setCookie(...cookies);
+                console.log(`   Loaded ${cookies.length} cookies.`);
+                isLoggedIn = true;
+            }
+        } catch (e) {
+            console.error("   Failed to parse cookie file:", e);
+        }
+    }
 
     // Capture Console Logs and parse our custom JSON
     page.on('console', msg => {
@@ -169,10 +192,15 @@ async function start() {
         }
     };
 
-    // 1. Initial Load - GO TO LOGIN PAGE (Manual Login)
-    console.log("🌐 Navigating to Canva Login...");
-    console.log("⚠️ PLEASE LOGIN MANUALLY!");
-    await page.goto('https://www.canva.com/login', { waitUntil: 'domcontentloaded' });
+    // 1. Initial Load
+    if (isLoggedIn) {
+        console.log("🌐 Navigating to Canva (Authenticated)...");
+        await page.goto('https://www.canva.com/settings/people', { waitUntil: 'domcontentloaded' });
+    } else {
+        console.log("🌐 Navigating to Canva Login...");
+        console.log("⚠️ PLEASE LOGIN MANUALLY!");
+        await page.goto('https://www.canva.com/login', { waitUntil: 'domcontentloaded' });
+    }
 
     // 2. Continuous Injection Loop (The only reliable way for dynamic iframes)
     console.log("\n✨ MODE V4 AKTIF! ✨");

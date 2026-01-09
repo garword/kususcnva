@@ -22,6 +22,20 @@ Dokumen ini menjelaskan fungsionalitas teknis terbaru dari bot, termasuk sistem 
 - **Command**: `/aktivasi [email]`
 - **Proses**: Verifikasi eligibility -> Masuk Antrian Database -> Eksekusi via GitHub Actions.
 
+### 5. Command User
+- **Start/Restart**: `/start`
+- **Aktivasi**: `/aktivasi [email]`
+- **Cek Slot**: `/check_slot` (atau via tombol)
+
+### 👮 Command Admin
+- **Panel Admin**: `/admin` (Tersedia tombol "📂 Export Data")
+- **Data Report**: `/data` (Export txt data user & langganan)
+- **Set Cookie**: `/set_cookie` (Upload file JSON / Reply text. Update otomatis ke GitHub Action)
+- **Broadcast**: `/broadcast [pesan]`
+- **Hapus User**: `/delete_user [email/id]` (Hard Delete dari DB)
+- **Force Expire**: `/forceexpire [email]`
+- **Set Channel**: `/set_channels`
+
 ---
 
 ## 🤖 Sistem Otomatisasi (Cerdas)
@@ -47,13 +61,33 @@ Bot memiliki 3 lapisan strategi login:
 Logika penghapusan user yang sudah habis masa aktifnya:
 1.  **Search**: Mencari email user di list anggota.
 2.  **Select**: Mencentang **Checkbox** user target.
-3.  **Action**: Klik ikon **Tong Sampah** (`.vxQy1w` / `aria-label="Remove"`).
+3.  **Action**: Klik tombol **Remove users** (`aria-label="Remove users"`).
 4.  **Confirm**: Klik tombol konfirmasi merah ("Remove from team") di popup.
 
-### 4. Team Quota Monitoring (Satpam Kuota)
-- **Real-time Monitoring**: Setiap bot bekerja, ia membaca header "People (N)".
-- **Database Recording**: Jumlah anggota tim disimpan ke database `settings`.
-- **Warning System**: Jika anggota mencapai **500 (Max Slot)**, bot mengirim peringatan ke log sistem bahwa invite mungkin akan gagal.
+### 4. Auto-Revoke Stale Invites (Pembersih Invite Lama)
+- **Problem**: Invite yang "Pending" lebih dari 1 jam mengambil kuota tim.
+- **Solution**: Script otomatis (`scripts/revoke_stale.ts`) mendeteksi invite yang statusnya masih "Invited" dan usianya > 1 jam, lalu mencabut invite tersebut.
+
+### 5. Team Quota Monitoring & Slot Prediction
+- **Real-time Sync**: Script (`scripts/sync_member_count.ts`) melakukan scan full-page untuk mendapatkan jumlah member yang akurat (Active + Pending).
+- **Slot Limit**: Jika anggota >= 500, bot **MEMBLOKIR** permintaan `/aktivasi` baru.
+- **Prediksi Waktu**: Jika penuh, bot memberi info "Slot Berikutnya Tersedia: [Tanggal Expired User Terdekat]".
+
+### 6. Logic Berlangganan Cerdas (Smart Subscription)
+- **Paket Free (1 Bulan)**:
+    - **Strict Limit**: Hanya boleh punya 1 akun aktif. User harus menunggu expired baru bisa klaim lagi.
+    - **Tujuan**: Mencegah abuse akun gratisan.
+- **Paket Premium (6 Bulan)**:
+    - **Stacking (Tumpuk)**: User bisa beli paket baru meski masih aktif.
+    - **Instant Extension**: Jika user aktif membeli lagi, bot otomatis memperpanjang masa aktif (+180 hari) tanpa perlu invite ulang.
+    - **Max Cap**: Batas maksimal penumpukan adalah **400 Hari** (mencegah penimbunan berlebihan).
+
+### 7. "Via Code" Fallback (Anti-RRS)
+- **Exclusive Strategy**: Bot diprioritaskan untuk menggunakan metode "Via Code" (Generate Link) daripada kirim email, untuk menghindari blokir "Security Reason" dari Canva.
+
+### 8. Privilese Admin
+- **Unlimited Points**: Admin tidak dikenakan biaya poin saat melakukan aktivasi paket Premium (Free of Charge).
+- **Bypass Limit**: Admin bisa melakukan generate invite tanpa perlu memikirkan saldo poin.
 
 ---
 
@@ -61,26 +95,26 @@ Logika penghapusan user yang sudah habis masa aktifnya:
 
 ### 1. Inspector Tool (New)
 - **Script**: `npx ts-node scripts/inspect_selector.ts`
-- **Fungsi**: Membuka browser visual di mana admin bisa klik elemen web apa saja untuk mendapatkan selector CSS/XPath/AriaLabel yang akurat. Berguna untuk debugging jika Canva update tampilan.
+- **Fungsi**: Membuka browser visual untuk inspeksi elemen web secara langsung.
 
-### 2. Manajemen Force Subscribe
-- `/set_channels`: Mengatur channel wajib join.
-- `/channels`: Melihat list channel aktif.
+### 2. Cek Slot (Member Feature)
+- Tombol `📊 Cek Slot` di menu utama user untuk memeriksa ketersediaan slot secara real-time.
 
-### 3. Broadcast Masal
-- Mengirim pesan ke seluruh user database dengan anti-flood protection.
+### 3. Manajemen Force Subscribe & Broadcast
+- Full control untuk mengatur channel wajib join dan broadcast pesan masal.
 
 ### 4. Admin Log (Visual)
-- Semua aktivitas bot (Login, Invite Sukses/Gagal, Kick, Error) disertai **FOTO BUKTI (Screenshot)** yang dikirim ke channel log admin.
+- Semua aktivitas kritis disertai Screenshot yang dikirim ke channel log.
 
 ---
 
 ## 🛠️ Struktur Database (Update)
 
 Tabel `settings` kini menyimpan data dinamis penting:
+- `team_member_count`: Jumlah anggota tim saat ini.
+- `team_pending_count`: Jumlah invite yang masih pending.
+- `last_sync_at`: Terakhir kali bot melakukan sinkronisasi data tim.
 - `canva_cookie`: Cadangan sesi login.
-- `canva_team_members_count`: Jumlah anggota tim saat ini (untuk monitoring kuota).
-- `force_sub_channels`: Konfigurasi channel wajib.
 
 ---
-*Dokumen ini diperbarui untuk versi bot dengan Login Email/Pass & Smart Selectors.*
+*Dokumen ini diperbarui untuk versi bot v2.1 dengan fitur Slot Management & Stale Invite Cleaner.*
