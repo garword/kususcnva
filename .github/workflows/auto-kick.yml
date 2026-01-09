@@ -38,6 +38,8 @@ jobs:
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
           CANVA_EMAIL: ${{ secrets.CANVA_EMAIL }}
           CANVA_PASSWORD: ${{ secrets.CANVA_PASSWORD }}
+          CANVA_COOKIES: ${{ secrets.CANVA_COOKIES }}
+          CANVA_USER_AGENT: ${{ secrets.CANVA_USER_AGENT }}
         run: npm run auto-kick
       
       - name: Upload kick log (if exists)

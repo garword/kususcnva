@@ -29,18 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             chromium-browser \
-            chromium-browser \
             chromium-chromedriver
-      
-      # 💾 CACHE CHROME PROFILE (SESSION PERSISTENCE)
-      - name: Cache Chrome Profile
-        uses: actions/cache@v4
-        with:
-          path: chrome_profile
-          # Key unik per run, tapi restore dari versi global (v1)
-          key: chrome-profile-${{ runner.os }}-v1-${{ github.run_id }}
-          restore-keys: |
-            chrome-profile-${{ runner.os }}-v1-
       
       - name: Run Queue Processor
         env:
@@ -50,6 +39,8 @@ jobs:
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
           CANVA_EMAIL: ${{ secrets.CANVA_EMAIL }}
           CANVA_PASSWORD: ${{ secrets.CANVA_PASSWORD }}
+          CANVA_COOKIES: ${{ secrets.CANVA_COOKIES }}
+          CANVA_USER_AGENT: ${{ secrets.CANVA_USER_AGENT }}
           LOG_CHANNEL_ID: ${{ secrets.LOG_CHANNEL_ID }}
         run: npm run process-queue
       
