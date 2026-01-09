@@ -643,7 +643,7 @@ async function runPuppeteerQueue() {
                         if (isLoggedIn) {
                             // Update Cookie in DB for future runs
                             const cookies = await page.cookies();
-                            const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+                            const cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
                             await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
                             console.log("   💾 New Session Cookie Saved to Database!");
                         }
