@@ -38,9 +38,15 @@ async function syncMemberCount() {
 
     const browser = await puppeteer.launch({
         executablePath: chromePath,
-        headless: false,
+        headless: process.env.CI ? 'new' : false,
         defaultViewport: null,
-        args: ['--start-maximized', '--disable-notifications']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--start-maximized',
+            '--disable-notifications'
+        ]
     });
 
     try {

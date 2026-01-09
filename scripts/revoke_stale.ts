@@ -85,9 +85,15 @@ async function revokeStaleInvites() {
 
     const browser = await puppeteer.launch({
         executablePath: chromePath,
-        headless: false, // Debug mode
+        headless: process.env.CI ? 'new' : false, // Headless in CI, Headful locally
         defaultViewport: null,
-        args: ['--start-maximized', '--disable-notifications']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--start-maximized',
+            '--disable-notifications'
+        ]
     });
 
     try {
