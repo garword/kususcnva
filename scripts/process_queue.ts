@@ -138,25 +138,13 @@ async function runPuppeteerQueue() {
         const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
 
         // 🎭 USER-AGENT POOL (Realistic & Updated 2026)
+        // 🎭 USER-AGENT (Custom Requested)
         const userAgentPool = [
-            // Windows Chrome (Most common)
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-
-            // Windows Edge
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
-
-            // macOS Safari
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-
-            // Windows Firefox
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36'
         ];
 
-        // Random selection
-        const userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
+        // Random selection (Single item now)
+        const userAgent = userAgentPool[0];
         console.log(`🎭 Using User-Agent: ${userAgent.substring(0, 60)}...`);
         // BROWSER LAUNCH CONFIGURATION
         // ------------------------------------------
