@@ -235,11 +235,39 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
-        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
+        // AUTHENTICATION STRATEGY: COOKIE PRIORITY -> EMAIL/PASSWORD FALLBACK
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
+        let isLoggedIn = false;
 
-        if (canvaEmail && canvaPassword) {
+        // 1. TRY COOKIE LOGIN FIRST (Bypass IP Checks)
+        const cookieStr = String(cookie);
+        if (cookieStr && cookieStr.length > 20) {
+            console.log("🍪 Attempting Login with Saved Cookie...");
+
+            // Parse Cookie String to Object Array
+            const cookieObjects = cookieStr.split(';').map(c => {
+                const [name, ...v] = c.trim().split('=');
+                return { name, value: v.join('='), domain: '.canva.com', path: '/' };
+            }).filter(c => c.name && c.value);
+
+            await page.setCookie(...cookieObjects);
+
+            // Verify Session
+            console.log("   Verifying session...");
+            await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2' });
+
+            // Check if redirected to login
+            if (!page.url().includes("login") && !page.url().includes("signup")) {
+                console.log("   ✅ Cookie Valid! Session Active.");
+                isLoggedIn = true;
+            } else {
+                console.log("   ❌ Cookie Invalid/Expired. Falling back to Password...");
+            }
+        }
+
+        // 2. FALLBACK: PASSWORD LOGIN (Only if Cookie Failed)
+        if (!isLoggedIn && canvaEmail && canvaPassword) {
             console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
@@ -612,6 +640,13 @@ async function runPuppeteerQueue() {
                         const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
                         await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
                         if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+                        if (isLoggedIn) {
+                            // Update Cookie in DB for future runs
+                            const cookies = await page.cookies();
+                            const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+                            await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
+                            console.log("   💾 New Session Cookie Saved to Database!");
+                        }
                     } catch (shotErr) {
                         console.error("Screenshot failed:", shotErr);
                         await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
