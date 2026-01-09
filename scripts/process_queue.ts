@@ -244,25 +244,6 @@ async function runPuppeteerQueue() {
             }
         };
 
-        const humanClick = async (selector: string) => {
-            const element = await page.$(selector);
-            if (element) {
-                // Move mouse to element first (hover)
-                const box = await element.boundingBox();
-                if (box) {
-                    await page.mouse.move(
-                        box.x + box.width / 2 + (Math.random() * 10 - 5), // Random offset
-                        box.y + box.height / 2 + (Math.random() * 10 - 5)
-                    );
-                    await randomDelay(100, 300); // Hover pause
-                }
-                await element.click();
-                await randomDelay(200, 500); // Post-click pause
-                return true;
-            }
-            return false;
-        };
-
         const randomScroll = async () => {
             // Occasional random scrolls (humans browse naturally)
             await page.evaluate(() => {
@@ -274,6 +255,48 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
+        // 🛡️ CLOUDFLARE BYPASS HELPER
+        const bypassCloudflare = async () => {
+            try {
+                // Check if Cloudflare Text exists ("Verify you are human")
+                const cfTitle = await page.$('h1, h2, span');
+                const text = await page.evaluate((el: any) => el ? el.textContent : '', cfTitle);
+
+                if (text?.includes('Verify you are human') || page.url().includes('challenge')) {
+                    console.log("🛡️ Cloudflare Challenge Detected! Attempting to solve...");
+                    await randomDelay(2000, 4000);
+
+                    // Find Turnstile/Checkbox Iframe
+                    const frames = page.frames();
+                    const cfFrame = frames.find((f: any) => f.url().includes('cloudflare') || f.url().includes('turnstile'));
+
+                    if (cfFrame) {
+                        console.log("   found Cloudflare iframe...");
+                        const checkbox = await cfFrame.$('input[type="checkbox"], label.ctp-checkbox-label, .mark');
+                        if (checkbox) {
+                            console.log("   Clicking Cloudflare Checkbox...");
+                            await checkbox.click();
+                            await randomDelay(3000, 5000);
+                        } else {
+                            // Try clicking center of iframe wrapper
+                            console.log("   Checkbox not found inside frame, clicking wrapper...");
+                            const box = await cfFrame.boundingBox(); // Only works if we have element handle, frames don't expose it easily.
+                            // Fallback: Click center of screen
+                            await page.mouse.click(400, 300);
+                        }
+                    } else {
+                        // Shadow DOM approach (Turnstile)
+                        console.log("   Trying Shadow DOM click...");
+                        await page.mouse.click(page.viewport()!.width / 2, page.viewport()!.height / 2 - 100);
+                    }
+
+                    await randomDelay(5000, 8000);
+                }
+            } catch (e) {
+                console.log("   ⚠️ Cloudflare check skipped/failed (might not be present).");
+            }
+        };
+
         // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK (User Request)
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
@@ -283,6 +306,10 @@ async function runPuppeteerQueue() {
         if (canvaEmail && canvaPassword) {
             console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
+
+            // CHECK & SOLVE CLOUDFLARE
+            await bypassCloudflare();
+
             await randomDelay(1500, 3000);
 
             try {
