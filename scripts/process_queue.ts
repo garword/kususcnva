@@ -695,47 +695,12 @@ async function runPuppeteerQueue() {
                             if (codeError === "SUCCESS_VIA_CODE") {
                                 // Already handled above, just skip to end
                             } else {
-                                console.log("   [DEBUG] Fallback 1 (Via Code) Failed, trying Link...");
+                                console.log("   [DEBUG] Fallback 1 (Via Code) Failed.");
                             }
                         }
 
                         if (!result || !result.success) {
-                            // FALLBACK 2: TRY TO GET INVITE LINK
-                            try {
-                                // Click "Copy invite link" button
-                                const linkButton = await page.evaluateHandle(() => {
-                                    const buttons = Array.from(document.querySelectorAll('button'));
-                                    return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
-                                });
-
-                                if (linkButton) {
-                                    await (linkButton as any).click();
-                                    await new Promise(r => setTimeout(r, 1000));
-
-                                    // Get from clipboard (requires permission, fallback to button finding)
-                                    // Better: Check if there is an input field with the link
-                                    const link = await page.evaluate(() => {
-                                        return navigator.clipboard.readText().catch(() => "");
-                                    });
-
-                                    if (link && link.startsWith("http")) {
-                                        result = { success: true, message: link }; // Message is the LINK itself
-                                    } else {
-                                        // Fallback: Try to find input type=text containing 'canva.com'
-                                        const linkInput = await page.evaluate(() => {
-                                            const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
-                                            return inputs.find(i => i.value.includes("canva.com"))?.value || "";
-                                        });
-                                        if (linkInput) result = { success: true, message: linkInput };
-                                        else throw new Error("Could not retrieve link from clipboard or input");
-                                    }
-                                } else {
-                                    throw new Error("Copy Link button not found");
-                                }
-                            } catch (fallbackError: any) {
-                                console.error("Fallback failed:", fallbackError);
-                                result = { success: false, message: error.message + " (All Fallbacks failed)" };
-                            }
+                            result = { success: false, message: error.message + " (Security Block & Via Code Failed)" };
                         }
                     } else {
                         result = { success: false, message: error.message };
