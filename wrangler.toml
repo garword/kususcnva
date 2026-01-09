@@ -1,0 +1,10 @@
+name = "bot-canva"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+node_compat = true
+
+[vars]
+# Variabel environment publik (Non-secret)
+# Secret seperti BOT_TOKEN dan TURSO_* harus diset via 'wrangler secret put' atau Dashboard.
+ADMIN_ID = "YourAdminID"
+ADMIN_CHANNEL_ID = "YourChannelID"

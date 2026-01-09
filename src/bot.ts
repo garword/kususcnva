@@ -3,15 +3,14 @@ import { sql } from "../lib/db";
 import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
 import axios from "axios";
-import { exec } from "child_process";
 
 dotenv.config();
 
 // Definisi Tipe Context Custom (jika perlu)
 type MyContext = Context;
 
-const token = process.env.BOT_TOKEN;
-if (!token) throw new Error("BOT_TOKEN hilang!");
+const token = process.env.BOT_TOKEN || "";
+// if (!token) throw new Error("BOT_TOKEN hilang!"); // Relaxed for Cloudflare
 
 export const bot = new Bot<MyContext>(token);
 
