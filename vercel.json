@@ -11,5 +11,11 @@
             "source": "/api/webhook",
             "destination": "/api/webhook"
         }
+    ],
+    "crons": [
+        {
+            "path": "/api/ping",
+            "schedule": "*/14 * * * *"
+        }
     ]
 }
