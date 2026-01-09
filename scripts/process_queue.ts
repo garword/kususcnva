@@ -670,41 +670,72 @@ async function runPuppeteerQueue() {
                     if (error.message.includes("Security reasons") || error.message.includes("RRS-")) {
                         console.log("⚠️ Security Block Detected! Attempting fallback to Invite Link...");
 
-                        // FALLBACK: TRY TO GET INVITE LINK
+                        // FALLBACK 1: TRY "VIA CODE" (User Priority)
                         try {
-                            // Click "Copy invite link" button
-                            const linkButton = await page.evaluateHandle(() => {
-                                const buttons = Array.from(document.querySelectorAll('button'));
-                                return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
-                            });
+                            console.log("   [DEBUG] Attempting Fallback 1: Via Code...");
+                            const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 5000 });
+                            if (viaCodeBtn) {
+                                await viaCodeBtn.click();
+                                await new Promise(r => setTimeout(r, 2000));
 
-                            if (linkButton) {
-                                await (linkButton as any).click();
-                                await new Promise(r => setTimeout(r, 1000));
+                                const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 5000 });
+                                if (copyCodeBtn) {
+                                    await copyCodeBtn.click();
+                                    await new Promise(r => setTimeout(r, 1000));
 
-                                // Get from clipboard (requires permission, fallback to button finding)
-                                // Better: Check if there is an input field with the link
-                                const link = await page.evaluate(() => {
-                                    return navigator.clipboard.readText().catch(() => "");
+                                    const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+                                    if (code) {
+                                        result = { success: true, message: code };
+                                        console.log(`   [DEBUG] Fallback 1 Success! Code: ${code}`);
+                                        throw "SUCCESS_VIA_CODE"; // Break out of fallback chain handled in outer catch? No, simpler to just set result.
+                                    }
+                                }
+                            }
+                        } catch (codeError) {
+                            if (codeError === "SUCCESS_VIA_CODE") {
+                                // Already handled above, just skip to end
+                            } else {
+                                console.log("   [DEBUG] Fallback 1 (Via Code) Failed, trying Link...");
+                            }
+                        }
+
+                        if (!result || !result.success) {
+                            // FALLBACK 2: TRY TO GET INVITE LINK
+                            try {
+                                // Click "Copy invite link" button
+                                const linkButton = await page.evaluateHandle(() => {
+                                    const buttons = Array.from(document.querySelectorAll('button'));
+                                    return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
                                 });
 
-                                if (link && link.startsWith("http")) {
-                                    result = { success: true, message: link }; // Message is the LINK itself
-                                } else {
-                                    // Fallback: Try to find input type=text containing 'canva.com'
-                                    const linkInput = await page.evaluate(() => {
-                                        const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
-                                        return inputs.find(i => i.value.includes("canva.com"))?.value || "";
+                                if (linkButton) {
+                                    await (linkButton as any).click();
+                                    await new Promise(r => setTimeout(r, 1000));
+
+                                    // Get from clipboard (requires permission, fallback to button finding)
+                                    // Better: Check if there is an input field with the link
+                                    const link = await page.evaluate(() => {
+                                        return navigator.clipboard.readText().catch(() => "");
                                     });
-                                    if (linkInput) result = { success: true, message: linkInput };
-                                    else throw new Error("Could not retrieve link from clipboard or input");
+
+                                    if (link && link.startsWith("http")) {
+                                        result = { success: true, message: link }; // Message is the LINK itself
+                                    } else {
+                                        // Fallback: Try to find input type=text containing 'canva.com'
+                                        const linkInput = await page.evaluate(() => {
+                                            const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
+                                            return inputs.find(i => i.value.includes("canva.com"))?.value || "";
+                                        });
+                                        if (linkInput) result = { success: true, message: linkInput };
+                                        else throw new Error("Could not retrieve link from clipboard or input");
+                                    }
+                                } else {
+                                    throw new Error("Copy Link button not found");
                                 }
-                            } else {
-                                throw new Error("Copy Link button not found");
+                            } catch (fallbackError: any) {
+                                console.error("Fallback failed:", fallbackError);
+                                result = { success: false, message: error.message + " (All Fallbacks failed)" };
                             }
-                        } catch (fallbackError: any) {
-                            console.error("Fallback failed:", fallbackError);
-                            result = { success: false, message: error.message + " (Fallback also failed)" };
                         }
                     } else {
                         result = { success: false, message: error.message };
