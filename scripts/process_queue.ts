@@ -612,13 +612,40 @@ async function runPuppeteerQueue() {
                     });
 
                     if (successToast) {
-                        console.log('   [DEBUG] ✅ Success Notification Detected!');
-                        result = { success: true, message: 'Invited' };
+                        console.log('   [DEBUG] ✅ Success Notification Detected! Verifying if user is really in the list...');
+
+                        // 7. Post-Invite Verification (Ultimate Check for Ghost Invites)
+                        await new Promise(r => setTimeout(r, 2000)); // Wait for backend sync
+                        await page.reload({ waitUntil: 'networkidle2' });
+
+                        console.log('   [DEBUG] Searching for user in team list...');
+                        // Reuse existing logic from manual check or kick
+                        const searchInput = await page.waitForSelector('input[type="text"], input[role="searchbox"]', { timeout: 10000 });
+                        if (searchInput) {
+                            await searchInput.type(email);
+                            await new Promise(r => setTimeout(r, 3000)); // Wait for search results
+
+                            const userFound = await page.evaluate((targetEmail) => {
+                                const bodyText = document.body.innerText;
+                                return bodyText.includes(targetEmail);
+                            }, email);
+
+                            if (userFound) {
+                                console.log('   [DEBUG] ✅ User Verified in List! Real Success.');
+                                result = { success: true, message: 'Invited & Verified' };
+                            } else {
+                                console.log('   [DEBUG] ❌ GHOST INVITE DETECTED! (Success Toast appeared but user not in list)');
+                                await sendSystemLog(`👻 <b>Ghost Invite Detected!</b>\nEmail: ${email}\nBot saw success toast, but user is NOT in the list.\nThis might be a shadowban or delay.`);
+                                throw new Error("Ghost Invite: Success toast appeared, but user not found in list.");
+                            }
+                        } else {
+                            console.log('   [DEBUG] ⚠️ Warning: Could not find search box for verification. Assuming success.');
+                            result = { success: true, message: 'Invited (Verification Skipped)' };
+                        }
                     } else {
                         console.log('   [DEBUG] ❌ Failed - No success notification found');
 
                         // SEND EVIDENCE TO TELEGRAM
-                        // Only send if we have a target chat ID
                         const targetChat = LOG_CHANNEL_ID || ADMIN_ID;
                         if (targetChat) {
                             await sendSystemLog(`⚠️ <b>Invite Failed (False Positive?)</b>\nBot clicked send, but no success toast appeared.\nSee attached screenshot.`);
