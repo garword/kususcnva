@@ -133,9 +133,9 @@ async function runPuppeteerQueue() {
         // Fetch settings
         const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
         const cookie = cookieRes.rows.length > 0 ? cookieRes.rows[0].value : "";
-
+        // Get Settings (Cookie, Team ID)
         const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-        const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
+        let teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
 
         // 🎭 USER-AGENT POOL (Realistic & Updated 2026)
         // 🎭 USER-AGENT (Custom Requested)
@@ -421,17 +421,28 @@ async function runPuppeteerQueue() {
                 throw new Error("All login methods failed (Cookie & Password). Check credentials/IP.");
             }
         }
-        /*
-            // COOKIE LOADING DISABLED - Using Fresh Login Only
-            if (cookie) {
-                console.log("🍪 Loading Backup Cookies...");
-                const cookieObjects = cookie.split(';').map(c => {
-                    const [name, ...v] = c.trim().split('=');
-                    return { name, value: v.join('='), domain: '.canva.com', path: '/' };
-                }).filter(c => c.name && c.value);
-                await page.setCookie(...cookieObjects);
+
+        // ------------------------------------------
+        // POST-LOGIN: TEAM ID AUTO-DISCOVERY
+        // ------------------------------------------
+        const currentUrl = page.url();
+        console.log(`   🔗 Current URL: ${currentUrl}`);
+
+        // Try to extract Team ID from URL (Format: canva.com/brand/TEAM_ID/...)
+        const brandMatch = currentUrl.match(/brand\/([^\/]+)/);
+        if (brandMatch && brandMatch[1]) {
+            const discoveredId = brandMatch[1];
+            if (discoveredId !== teamId) {
+                console.log(`   🎯 Detected Active Team ID from URL: ${discoveredId}`);
+                // Update local variable for this session
+                teamId = discoveredId;
+
+                // Optional: Update DB if missing
+                // await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_id', ?)", [discoveredId]);
             }
-            */
+        }
+
+        console.log(`   🏢 Target Team ID: ${teamId || "Default (Personal/Last Active)"}`);
 
         let successInvites = 0;
         let failInvites = 0;
