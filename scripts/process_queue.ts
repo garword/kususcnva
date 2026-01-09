@@ -133,95 +133,53 @@ async function runPuppeteerQueue() {
         // Fetch settings
         const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
         const cookie = cookieRes.rows.length > 0 ? cookieRes.rows[0].value : "";
-        // Get Settings (Cookie, Team ID)
+
         const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-        let teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
+        const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
 
         // 🎭 USER-AGENT POOL (Realistic & Updated 2026)
-        // 🎭 USER-AGENT (Custom Requested)
         const userAgentPool = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36'
+            // Windows Chrome (Most common)
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+
+            // Windows Edge
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+
+            // macOS Safari
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+
+            // Windows Firefox
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
         ];
 
-        // Random selection (Single item now)
-        const userAgent = userAgentPool[0];
+        // Random selection
+        const userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
         console.log(`🎭 Using User-Agent: ${userAgent.substring(0, 60)}...`);
-        // BROWSER LAUNCH CONFIGURATION
-        // ------------------------------------------
-        const launchOptions: any = {
+
+        const browser = await puppeteer.launch({
             executablePath: chromePath,
             headless: process.env.CI ? "new" : false,
             defaultViewport: null,
-            ignoreDefaultArgs: ['--enable-automation'], // 🙈 HIDE "Chrome is being controlled..."
-            userDataDir: './chrome_profile', // 💾 PERSISTENT SESSION (Disimpan di Cache GitHub)
+            ignoreDefaultArgs: ['--enable-automation'],
             args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                // '--incognito', // 🚫 DISABLE INCOGNITO agar session tersimpan
+                '--incognito', // 🕵️‍♂️ Enable Incognito Mode
                 '--start-maximized',
+                // '--no-sandbox', // REMOVED: Triggers "unsupported flag" warning
+                // '--disable-setuid-sandbox', // REMOVED: Triggers "unsupported flag" warning
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
                 '--disable-features=IsolateOrigins,site-per-process',
+                // Timezone spoofing to match IP (General Asia/Jakarta for ID IP)
                 '--timezone=Asia/Jakarta'
             ]
-        };
-
-        // ------------------------------------------
-        // PROXY CONFIGURATION
-        // ------------------------------------------
-        const proxyUrl = ""; // process.env.PROXY_URL; // 🚫 DISABLED PER USER REQUEST
-        let proxyServer = "";
-        let proxyUser = "";
-        let proxyPass = "";
-
-        if (proxyUrl) {
-            try {
-                const urlObj = new URL(proxyUrl);
-                proxyServer = `${urlObj.protocol}//${urlObj.hostname}:${urlObj.port}`;
-                proxyUser = urlObj.username;
-                proxyPass = urlObj.password;
-
-                console.log(`🌍 Using Proxy: ${proxyServer}`);
-                launchOptions.args.push(`--proxy-server=${proxyServer}`);
-            } catch (e) {
-                console.error("❌ Invalid PROXY_URL format. Ignoring proxy.");
-            }
-        }
-
-        const browser = await puppeteer.launch(launchOptions);
+        });
 
         // Use Incognito Context
-        const context = browser.defaultBrowserContext();
+        const context = await browser.createBrowserContext();
         const page = await context.newPage();
-
-        // AUTHENTICATE PROXY (If needed)
-        if (proxyUser && proxyPass) {
-            console.log("🔐 Authenticating Proxy...");
-            await page.authenticate({ username: proxyUser, password: proxyPass });
-        }
-
-        // Set realistic user-agent
-        await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        // STEALTH EVASION: Inject Scripts before page load
-        await page.evaluateOnNewDocument(() => {
-            // 1. Remove navigator.webdriver
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
-            // 2. Spoof Languages
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-
-            // 3. Spoof Plugins (Simple mock)
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-
-            // 4. WebGL Vendor Spoofing (Google Inc. -> Intel/NVIDIA)
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function (parameter) {
-                if (parameter === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
-                if (parameter === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
-                return getParameter(parameter);
-            };
-        });
 
         // Set realistic user-agent (Stealth Plugin handles most fingerprints, but UA is good to set)
         await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -232,14 +190,38 @@ async function runPuppeteerQueue() {
             new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
 
         const humanType = async (element: any, text: string) => {
-            // Safer typing method: Select All -> Delete -> Type Steady
-            await element.click({ clickCount: 3 });
-            await randomDelay(200, 400);
-            await element.press('Backspace');
-            await randomDelay(300, 500);
+            await element.click();
+            await randomDelay(300, 600); // Think before typing
 
-            // Type with steady rhythm (100ms delay is human enough but accurate)
-            await element.type(text, { delay: 100 });
+            for (const char of text) {
+                await page.keyboard.type(char, {
+                    delay: Math.random() * 150 + 50 // 50-200ms per char (realistic)
+                });
+
+                // Random micro-pauses (like humans thinking)
+                if (Math.random() < 0.15) { // 15% chance of pause
+                    await randomDelay(200, 500);
+                }
+            }
+        };
+
+        const humanClick = async (selector: string) => {
+            const element = await page.$(selector);
+            if (element) {
+                // Move mouse to element first (hover)
+                const box = await element.boundingBox();
+                if (box) {
+                    await page.mouse.move(
+                        box.x + box.width / 2 + (Math.random() * 10 - 5), // Random offset
+                        box.y + box.height / 2 + (Math.random() * 10 - 5)
+                    );
+                    await randomDelay(100, 300); // Hover pause
+                }
+                await element.click();
+                await randomDelay(200, 500); // Post-click pause
+                return true;
+            }
+            return false;
         };
 
         const randomScroll = async () => {
@@ -253,194 +235,152 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
-        // 🛡️ CLOUDFLARE BYPASS HELPER
-        const bypassCloudflare = async () => {
-            try {
-                // Check if Cloudflare Text exists ("Verify you are human")
-                const cfTitle = await page.$('h1, h2, span');
-                const text = await page.evaluate((el: any) => el ? el.textContent : '', cfTitle);
-
-                if (text?.includes('Verify you are human') || page.url().includes('challenge')) {
-                    console.log("🛡️ Cloudflare Challenge Detected! Attempting to solve...");
-                    await randomDelay(2000, 4000);
-
-                    // Find Turnstile/Checkbox Iframe
-                    const frames = page.frames();
-                    const cfFrame = frames.find((f: any) => f.url().includes('cloudflare') || f.url().includes('turnstile'));
-
-                    if (cfFrame) {
-                        console.log("   found Cloudflare iframe...");
-                        const checkbox = await cfFrame.$('input[type="checkbox"], label.ctp-checkbox-label, .mark');
-                        if (checkbox) {
-                            console.log("   Clicking Cloudflare Checkbox...");
-                            await checkbox.click();
-                            await randomDelay(3000, 5000);
-                        } else {
-                            // Try clicking center of iframe wrapper
-                            console.log("   Checkbox not found inside frame, clicking wrapper...");
-                            const box = await cfFrame.boundingBox(); // Only works if we have element handle, frames don't expose it easily.
-                            // Fallback: Click center of screen
-                            await page.mouse.click(400, 300);
-                        }
-                    } else {
-                        // Shadow DOM approach (Turnstile)
-                        console.log("   Trying Shadow DOM click...");
-                        await page.mouse.click(page.viewport()!.width / 2, page.viewport()!.height / 2 - 100);
-                    }
-
-                    await randomDelay(5000, 8000);
-                }
-            } catch (e) {
-                console.log("   ⚠️ Cloudflare check skipped/failed (might not be present).");
-            }
-        };
-
-        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK (User Request)
+        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
-        let isLoggedIn = false;
 
-        // 1. TRY PASSWORD LOGIN FIRST
         if (canvaEmail && canvaPassword) {
             console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
-            // CHECK & SOLVE CLOUDFLARE
-            await bypassCloudflare();
-
+            // Random initial idle (like human arriving at page)
             await randomDelay(1500, 3000);
 
             try {
-                // ... (Flow Login Step 1-5 yang ada sebelumnya) ...
-                // STEP 1: Click "Continue with email" or Input Directly
+                // STEP 1: Click "Continue with email" button
                 console.log("   [1/5] Looking for 'Continue with email' button...");
+                await randomDelay(1000, 2000); // Human reads the page
+
+                // Occasional scroll to mimic browsing
                 if (Math.random() < 0.3) await randomScroll();
 
                 const continueWithEmailBtn = await page.evaluate(() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
                     const btn = buttons.find(b => b.textContent?.includes('Continue with email'));
-                    if (btn) { btn.click(); return true; }
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
                     return false;
                 });
 
-                await randomDelay(1200, 2500);
-
-                // STEP 2: Enter Email
-                console.log("   [2/5] Entering Email...");
-                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 }).catch(() => null);
-
-                if (emailInput) {
-                    await humanType(emailInput, canvaEmail);
-                    await randomDelay(800, 1500);
-
-                    // STEP 3: Click Continue
-                    console.log("   [3/5] Clicking Continue...");
-                    const continueClicked = await page.evaluate(() => {
-                        const spans = Array.from(document.querySelectorAll('span'));
-                        const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
-                        if (continueSpan) { continueSpan.closest('button')?.click(); return true; }
-                        return false;
-                    });
-                    if (!continueClicked) await emailInput.press('Enter');
+                if (!continueWithEmailBtn) {
+                    console.log("   'Continue with email' button not found, might be direct email form");
                 }
 
-                // STEP 4: Password
+                await randomDelay(1200, 2500); // Wait for form transition
+
+                // STEP 2: Enter Email (HUMAN-LIKE TYPING)
+                console.log("   [2/5] Entering Email...");
+                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 });
+                if (emailInput) {
+                    await humanType(emailInput, canvaEmail); // Use human typing!
+                }
+
+                // STEP 3: Click "Continue" button (span with text "Continue")
+                console.log("   [3/5] Clicking Continue...");
+                await randomDelay(800, 1500); // Think before clicking
+
+                const continueClicked = await page.evaluate(() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
+                    if (continueSpan) {
+                        const button = continueSpan.closest('button');
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+
+                if (!continueClicked) {
+                    console.log("   Continue button not found, trying Enter key...");
+                    await emailInput?.press('Enter');
+                }
+
+                // STEP 4: Wait for Password Field & Enter Password
                 console.log("   [4/5] Waiting for password field...");
-                await randomDelay(2500, 4000);
-                const passInput = await page.waitForSelector('input[type="password"], input.bCVoGQ', { timeout: 15000 }).catch(() => null);
+                await randomDelay(2500, 4000); // Give extra time for transition/re-render
+
+                // Re-fetch selector to avoid "Detached Node" error
+                const inputSelector = 'input[type="password"], input.bCVoGQ';
+                await page.waitForSelector(inputSelector, { timeout: 15000 });
+                const passInput = await page.$(inputSelector);
 
                 if (passInput) {
                     console.log("   [4/5] Entering Password...");
-                    await humanType(passInput, canvaPassword);
-                    await randomDelay(1000, 2000);
-
-                    // STEP 5: Log in
-                    console.log("   [5/5] Clicking Log in...");
-                    const loginClicked = await page.evaluate(() => {
-                        const spans = Array.from(document.querySelectorAll('span'));
-                        const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
-                        if (loginSpan) { loginSpan.closest('button')?.click(); return true; }
-                        return false;
-                    });
-                    if (!loginClicked) await passInput.press('Enter');
+                    await randomDelay(500, 1000); // Pause before typing
+                    await humanType(passInput, canvaPassword); // Human typing!
+                } else {
+                    throw new Error("Password input field not found after wait.");
                 }
 
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
+                // STEP 5: Click "Log in" button (span with text "Log in")
+                console.log("   [5/5] Clicking Log in...");
+                await randomDelay(1000, 2000); // Think before final click
+
+                const loginClicked = await page.evaluate(() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
+                    if (loginSpan) {
+                        const button = loginSpan.closest('button');
+                        if (button) {
+                            button.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+
+                if (!loginClicked) {
+                    console.log("   Log in button not found, trying Enter key...");
+                    await passInput?.press('Enter');
+                }
+
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
                 console.log("   ✅ Login Submitted. checking access...");
-                await randomDelay(3000, 5000);
 
-                // Check Success
-                if (!page.url().includes("login") && !page.url().includes("signup")) {
-                    console.log("   ✅ Login Successful via Password!");
-                    isLoggedIn = true;
+                // Human pause after login
+                await randomDelay(2000, 4000);
 
-                    // SAVE NEW COOKIE
-                    const cookies = await page.cookies();
-                    const cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-                    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
-                    console.log("   💾 Session Cookie Saved for Future Fallback!");
-                }
+                // CAPTURE LOGIN SUCCESS SCREENSHOT
+                const loginShotPath = `login_success_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: loginShotPath, quality: 60, type: 'jpeg' });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, loginShotPath, `✅ <b>Login Success</b>\nBerhasil masuk ke akun Canva!`);
+                    if (fs.existsSync(loginShotPath)) fs.unlinkSync(loginShotPath);
+                } catch (e) { console.error("Snapshot failed", e); }
+
+                await randomDelay(2000, 3000); // Allow redirect
 
             } catch (loginErr: any) {
-                console.error("❌ Password Login Failed:", loginErr.message);
-                // Continue to Cookie Fallback...
+                console.error("❌ Login Failed:", loginErr);
+                const shotPath = `login_fail_${Date.now()}.jpg`;
+                try {
+                    await page.screenshot({ path: shotPath });
+                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, `❌ <b>Login Failed</b>\nReason: ${loginErr.message}`);
+                    if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+                } catch (e) { console.error("Screenshot failed", e); }
+
+                // DISABLED COOKIE FALLBACK - Force Email/Password Login Only
+                throw new Error("Email/Password login required. Cookie fallback disabled.");
             }
+        } else {
+            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env");
         }
 
-        // 2. FALLBACK: COOKIE LOGIN (If Password Failed)
-        const cookieStr = String(cookie);
-        if (!isLoggedIn && cookieStr && cookieStr.length > 20) {
-            console.log("⚠️ Password Login Failed/Skipped. Trying Cookie Fallback...");
-
-            const cookieObjects = cookieStr.split(';').map(c => {
+        // COOKIE LOADING DISABLED - Using Fresh Login Only
+        /*
+        if (cookie) {
+            console.log("🍪 Loading Backup Cookies...");
+            const cookieObjects = cookie.split(';').map(c => {
                 const [name, ...v] = c.trim().split('=');
                 return { name, value: v.join('='), domain: '.canva.com', path: '/' };
             }).filter(c => c.name && c.value);
-
             await page.setCookie(...cookieObjects);
-
-            console.log("   Verifying session...");
-            await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2' });
-
-            if (!page.url().includes("login") && !page.url().includes("signup")) {
-                console.log("   ✅ Fallback Cookie Valid! Session Active.");
-                isLoggedIn = true;
-            } else {
-                console.log("   ❌ Fallback Cookie Invalid/Expired.");
-            }
         }
-
-        // FINAL AUTH CHECK
-        if (!isLoggedIn) {
-            console.error("❌ CRITICAL: Authentication Failed.");
-            if (!canvaEmail || !canvaPassword) {
-                throw new Error("Login failed (Cookie invalid) AND No Email/Password in .env");
-            } else {
-                throw new Error("All login methods failed (Cookie & Password). Check credentials/IP.");
-            }
-        }
-
-        // ------------------------------------------
-        // POST-LOGIN: TEAM ID AUTO-DISCOVERY
-        // ------------------------------------------
-        const currentUrl = page.url();
-        console.log(`   🔗 Current URL: ${currentUrl}`);
-
-        // Try to extract Team ID from URL (Format: canva.com/brand/TEAM_ID/...)
-        const brandMatch = currentUrl.match(/brand\/([^\/]+)/);
-        if (brandMatch && brandMatch[1]) {
-            const discoveredId = brandMatch[1];
-            if (discoveredId !== teamId) {
-                console.log(`   🎯 Detected Active Team ID from URL: ${discoveredId}`);
-                // Update local variable for this session
-                teamId = discoveredId;
-
-                // Optional: Update DB if missing
-                // await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_id', ?)", [discoveredId]);
-            }
-        }
-
-        console.log(`   🏢 Target Team ID: ${teamId || "Default (Personal/Last Active)"}`);
+        */
 
         let successInvites = 0;
         let failInvites = 0;
@@ -492,19 +432,7 @@ async function runPuppeteerQueue() {
                     await randomDelay(500, 1000); // Look around
 
                     const inviteButtonFound = await page.evaluate(() => {
-                        // Comprehensive XPath for Edu/Pro/Personal in English & Indonesian
-                        const keywords = [
-                            'Invite people', 'Undang orang',
-                            'Add students', 'Tambahkan siswa', 'Undang siswa', 'Invite students',
-                            'Add people', 'Tambahkan orang',
-                            'Invite members', 'Undang anggota',
-                            'Add members', 'Tambahkan anggota'
-                        ];
-
-                        // Construct XPath: //button[contains(., 'Key1') or contains(., 'Key2') ...]
-                        const conditions = keywords.map(k => `contains(., '${k}')`).join(' or ');
-                        const xpath = `//button[${conditions}]`;
-
+                        const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
                         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                         const button = result.singleNodeValue as HTMLElement;
                         if (button) {
@@ -545,11 +473,9 @@ async function runPuppeteerQueue() {
                     console.log('   [DEBUG] Waiting for email input to appear...');
                     await randomDelay(800, 1500);
 
-                    const emailInput = await page.$('input[aria-label="Enter email for person 1"], input[type="email"], input[placeholder*="email"], input[placeholder*="Email"], textarea');
+                    const emailInput = await page.$('input[aria-label="Enter email for person 1"]');
                     if (!emailInput) {
-                        // Extensive dump if input missing
-                        const pageContent = await page.content();
-                        throw new Error("Email input field not found in invite popup (Edu/Pro layout difference?)");
+                        throw new Error("Email input not found in popup");
                     }
 
                     // 3. Type email using HUMAN TYPING
@@ -648,10 +574,48 @@ async function runPuppeteerQueue() {
                     }
 
                 } catch (error: any) {
-                    result = {
-                        success: false,
-                        message: error.message
-                    };
+                    if (error.message.includes("Security reasons") || error.message.includes("RRS-")) {
+                        console.log("⚠️ Security Block Detected! Attempting fallback to Invite Link...");
+
+                        // FALLBACK: TRY TO GET INVITE LINK
+                        try {
+                            // Click "Copy invite link" button
+                            const linkButton = await page.evaluateHandle(() => {
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                return buttons.find(b => b.textContent?.includes('Copy invite link') || b.textContent?.includes('Salin tautan')) || null;
+                            });
+
+                            if (linkButton) {
+                                await (linkButton as any).click();
+                                await new Promise(r => setTimeout(r, 1000));
+
+                                // Get from clipboard (requires permission, fallback to button finding)
+                                // Better: Check if there is an input field with the link
+                                const link = await page.evaluate(() => {
+                                    return navigator.clipboard.readText().catch(() => "");
+                                });
+
+                                if (link && link.startsWith("http")) {
+                                    result = { success: true, message: link }; // Message is the LINK itself
+                                } else {
+                                    // Fallback: Try to find input type=text containing 'canva.com'
+                                    const linkInput = await page.evaluate(() => {
+                                        const inputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
+                                        return inputs.find(i => i.value.includes("canva.com"))?.value || "";
+                                    });
+                                    if (linkInput) result = { success: true, message: linkInput };
+                                    else throw new Error("Could not retrieve link from clipboard or input");
+                                }
+                            } else {
+                                throw new Error("Copy Link button not found");
+                            }
+                        } catch (fallbackError: any) {
+                            console.error("Fallback failed:", fallbackError);
+                            result = { success: false, message: error.message + " (Fallback also failed)" };
+                        }
+                    } else {
+                        result = { success: false, message: error.message };
+                    }
                 }
 
                 if (result.success) {
@@ -669,7 +633,13 @@ async function runPuppeteerQueue() {
                     await sql(`UPDATE users SET status = 'active', selected_product_id = 1 WHERE id = ?`, [userId]);
 
                     if (userId > 0) {
-                        await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                        if (result.message.startsWith("http")) {
+                            // SEND LINK TO USER
+                            await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                        } else {
+                            // NORMAL SUCCESS
+                            await sendTelegram(userId, `✅ <b>Undangan Dikirim!</b>\nSilakan cek email Anda (${email}) untuk gabung ke tim Canva.\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                        }
                     }
 
                     // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
@@ -686,13 +656,6 @@ async function runPuppeteerQueue() {
                         const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
                         await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
                         if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
-                        if (isLoggedIn) {
-                            // Update Cookie in DB for future runs
-                            const cookies = await page.cookies();
-                            const cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-                            await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
-                            console.log("   💾 New Session Cookie Saved to Database!");
-                        }
                     } catch (shotErr) {
                         console.error("Screenshot failed:", shotErr);
                         await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
