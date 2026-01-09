@@ -152,9 +152,11 @@ async function runPuppeteerQueue() {
             executablePath: chromePath,
             headless: process.env.CI ? "new" : false,
             defaultViewport: null,
-            ignoreDefaultArgs: ['--enable-automation'],
+            userDataDir: './chrome_profile', // 💾 PERSISTENT SESSION (Disimpan di Cache GitHub)
             args: [
-                '--incognito', // 🕵️‍♂️ Enable Incognito Mode
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                // '--incognito', // 🚫 DISABLE INCOGNITO agar session tersimpan
                 '--start-maximized',
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
