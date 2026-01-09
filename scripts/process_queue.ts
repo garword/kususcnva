@@ -643,6 +643,16 @@ async function runPuppeteerQueue() {
                             result = { success: true, message: 'Invited (Verification Skipped)' };
                         }
                     } else {
+                        // Check for specific error message (Security reasons)
+                        const securityWarning = await page.evaluate(() => {
+                            const text = document.body.innerText;
+                            return text.includes("Security reasons") || text.includes("alasan keamanan");
+                        });
+
+                        if (securityWarning) {
+                            throw new Error("Security reasons detected on screen");
+                        }
+
                         console.log('   [DEBUG] ❌ Failed - No success notification found');
 
                         // SEND EVIDENCE TO TELEGRAM
