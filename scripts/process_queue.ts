@@ -158,8 +158,9 @@ async function runPuppeteerQueue() {
         // Random selection
         const userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
         console.log(`🎭 Using User-Agent: ${userAgent.substring(0, 60)}...`);
-
-        const browser = await puppeteer.launch({
+        // BROWSER LAUNCH CONFIGURATION
+        // ------------------------------------------
+        const launchOptions: any = {
             executablePath: chromePath,
             headless: process.env.CI ? "new" : false,
             defaultViewport: null,
@@ -167,19 +168,49 @@ async function runPuppeteerQueue() {
             args: [
                 '--incognito', // 🕵️‍♂️ Enable Incognito Mode
                 '--start-maximized',
-                // '--no-sandbox', // REMOVED: Triggers "unsupported flag" warning
-                // '--disable-setuid-sandbox', // REMOVED: Triggers "unsupported flag" warning
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
                 '--disable-features=IsolateOrigins,site-per-process',
-                // Timezone spoofing to match IP (General Asia/Jakarta for ID IP)
                 '--timezone=Asia/Jakarta'
             ]
-        });
+        };
+
+        // ------------------------------------------
+        // PROXY CONFIGURATION
+        // ------------------------------------------
+        const proxyUrl = process.env.PROXY_URL; // Format: http://user:pass@ip:port
+        let proxyServer = "";
+        let proxyUser = "";
+        let proxyPass = "";
+
+        if (proxyUrl) {
+            try {
+                const urlObj = new URL(proxyUrl);
+                proxyServer = `${urlObj.protocol}//${urlObj.hostname}:${urlObj.port}`;
+                proxyUser = urlObj.username;
+                proxyPass = urlObj.password;
+
+                console.log(`🌍 Using Proxy: ${proxyServer}`);
+                launchOptions.args.push(`--proxy-server=${proxyServer}`);
+            } catch (e) {
+                console.error("❌ Invalid PROXY_URL format. Ignoring proxy.");
+            }
+        }
+
+        const browser = await puppeteer.launch(launchOptions);
 
         // Use Incognito Context
         const context = browser.defaultBrowserContext();
         const page = await context.newPage();
+
+        // AUTHENTICATE PROXY (If needed)
+        if (proxyUser && proxyPass) {
+            console.log("🔐 Authenticating Proxy...");
+            await page.authenticate({ username: proxyUser, password: proxyPass });
+        }
+
+        // Set realistic user-agent
+        await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
         // STEALTH EVASION: Inject Scripts before page load
         await page.evaluateOnNewDocument(() => {
