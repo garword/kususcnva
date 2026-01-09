@@ -291,7 +291,37 @@ async function runPuppeteerQueue() {
             const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
             if (cookieRes.rows.length > 0) {
                 const cookieStr = cookieRes.rows[0].value as string;
-                const cookies = JSON.parse(cookieStr);
+                let cookies: any[] = [];
+
+                try {
+                    // 1. Try JSON Parse
+                    cookies = JSON.parse(cookieStr);
+                } catch (e) {
+                    // 2. If JSON fails, assume raw cookie string (key=value; key=value)
+                    // console.log("   ℹ️ Cookie is not JSON, parsing as raw string...");
+                    cookies = cookieStr.split(';').map(part => {
+                        const [name, ...rest] = part.trim().split('=');
+                        if (!name || rest.length === 0) return null;
+                        return {
+                            name: name,
+                            value: rest.join('='),
+                            domain: '.canva.com',
+                            path: '/',
+                            httpOnly: false,
+                            secure: true,
+                            sameSite: 'Lax'
+                        };
+                    }).filter(c => c !== null);
+                }
+
+                // Normalisasi array (jika user upload single object)
+                if (!Array.isArray(cookies)) cookies = [cookies];
+
+                // Filter jika kosong atau invalid
+                if (cookies.length === 0) {
+                    console.log("   ⚠️ DB Cookie is empty or invalid format.");
+                    throw new Error("Invalid Cookie Format");
+                }
 
                 await page.setCookie(...cookies);
                 console.log(`   ✅ Loaded ${cookies.length} cookies from DB.`);
