@@ -1,4 +1,4 @@
-import { Bot, Context, session, InlineKeyboard, Keyboard, InputFile } from "grammy";
+import { Bot, Context, InlineKeyboard, Keyboard, InputFile, GrammyError, HttpError } from "grammy";
 import { sql } from "../lib/db";
 import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
@@ -1257,6 +1257,19 @@ bot.command("data", async (ctx) => {
 });
 
 // Error handling basic
+// ============================================================
+// ERROR HANDLING
+// ============================================================
 bot.catch((err) => {
-    console.error("Error di bot:", err);
+    const ctx = err.ctx;
+    console.error(`Error while handling update ${ctx.update.update_id}:`);
+    const e = err.error;
+
+    if (e instanceof GrammyError) {
+        console.error("Error in request:", e.description);
+    } else if (e instanceof HttpError) {
+        console.error("Could not contact Telegram:", e);
+    } else {
+        console.error("Unknown error:", e);
+    }
 });
