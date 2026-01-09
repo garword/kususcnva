@@ -229,19 +229,14 @@ async function runPuppeteerQueue() {
             new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
 
         const humanType = async (element: any, text: string) => {
-            await element.click();
-            await randomDelay(300, 600); // Think before typing
+            // Safer typing method: Select All -> Delete -> Type Steady
+            await element.click({ clickCount: 3 });
+            await randomDelay(200, 400);
+            await element.press('Backspace');
+            await randomDelay(300, 500);
 
-            for (const char of text) {
-                await page.keyboard.type(char, {
-                    delay: Math.random() * 150 + 50 // 50-200ms per char (realistic)
-                });
-
-                // Random micro-pauses (like humans thinking)
-                if (Math.random() < 0.15) { // 15% chance of pause
-                    await randomDelay(200, 500);
-                }
-            }
+            // Type with steady rhythm (100ms delay is human enough but accurate)
+            await element.type(text, { delay: 100 });
         };
 
         const randomScroll = async () => {
