@@ -35,7 +35,7 @@ const findChromeParams = [
 
 function getChromePath() {
     if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
-    const fs = require('fs');
+    // Don't re-import fs, use the top level one
     for (const path of findChromeParams) {
         try { if (fs.existsSync(path)) return path; } catch (e) { continue; }
     }
@@ -66,22 +66,44 @@ async function humanType(element: any, text: string) {
 }
 
 async function kickExpiredUsers() {
-    console.log("🤖 Auto-Kick Job Started (v2.0 - Stealth Mode)...");
+    console.log("🤖 Auto-Kick Job Started (v2.0 - CookieAuth)...");
 
-    // 1. Get Expired Users (Expiry is in subscriptions table)
-    const expiredUsers = await sql(`
-        SELECT u.email, u.id, s.id as sub_id 
-        FROM users u 
-        JOIN subscriptions s ON u.id = s.user_id 
-        WHERE s.end_date < datetime('now') 
-        AND s.status = 'active'
-    `);
+    // 0. Check for Manual Target
+    const args = process.argv.slice(2);
+    const manualTarget = args.find(a => a.includes('@')); // Simple detection: any arg with '@' is treated as email
 
-    if (expiredUsers.rows.length === 0) {
-        console.log("✅ No expired users found.");
-        return;
+    let targets: { email: string, id: any, sub_id: any }[] = [];
+
+    if (manualTarget) {
+        console.log(`🎯 MANUAL MODE: Targeting specific user: ${manualTarget}`);
+        targets = [{ email: manualTarget, id: null, sub_id: null }];
+    } else {
+        // 1. Get Expired Users (Expiry is in subscriptions table)
+        const expiredUsers = await sql(`
+            SELECT u.email, u.id, s.id as sub_id 
+            FROM users u 
+            JOIN subscriptions s ON u.id = s.user_id 
+            WHERE s.end_date < datetime('now') 
+            AND s.status = 'active'
+        `);
+
+        if (expiredUsers.rows.length === 0) {
+            console.log("✅ No expired users found.");
+            return;
+        }
+        targets = expiredUsers.rows as any;
+        console.log(`🎯 Found ${targets.length} expired user(s) to kick.`);
     }
-    console.log(`🎯 Found ${expiredUsers.rows.length} expired user(s) to kick.`);
+
+    // 1.5. RESTORE SESSION FROM ENV (FOR GITHUB ACTIONS)
+    if (process.env.CANVA_COOKIES) {
+        console.log("📂 Restoring Cookies from Env Var...");
+        fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
+    }
+    if (process.env.CANVA_USER_AGENT) {
+        console.log("📂 Restoring User-Agent from Env Var...");
+        fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
+    }
 
     // 2. Launch Browser (Stealth + Incognito)
     const chromePath = getChromePath();
@@ -89,7 +111,7 @@ async function kickExpiredUsers() {
 
     const browser = await puppeteer.launch({
         executablePath: chromePath,
-        headless: process.env.CI ? "new" : false, // "new" for CI (GitHub Actions), false for Local Debug
+        headless: process.env.CI ? "new" : false,
         defaultViewport: null,
         ignoreDefaultArgs: ['--enable-automation'],
         args: [
@@ -106,99 +128,143 @@ async function kickExpiredUsers() {
         const context = await browser.createBrowserContext();
         const page = await context.newPage();
 
-        // 3. Login Flow (Email/Password) - Copied from process_queue
-        if (!CANVA_EMAIL || !CANVA_PASSWORD) throw new Error("CANVA_EMAIL & CANVA_PASSWORD required!");
+        // 3. Login Flow (Cookie Priority -> Email/Password)
+        const cookieFile = 'auth_cookies.json';
+        const uaFile = 'auth_user_agent.txt';
+        let isLoggedIn = false;
 
-        console.log(`🔐 Logging in as ${CANVA_EMAIL}...`);
-        await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
-        await randomDelay(2000, 4000);
-
-        // STEP 1: Click "Continue with email" button
-        console.log("   [1/5] Looking for 'Continue with email' button...");
-        await randomDelay(1000, 2000);
-
-        const continueWithEmailBtn = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button'));
-            const btn = buttons.find(b => b.textContent?.includes('Continue with email') || b.textContent?.includes('Lanjutkan dengan email'));
-            if (btn) {
-                btn.click();
-                return true;
-            }
-            return false;
-        });
-
-        if (!continueWithEmailBtn) console.log("   'Continue with email' button not found, trying user input...");
-        await randomDelay(1200, 2500);
-
-        // STEP 2: Enter Email
-        console.log("   [2/5] Entering Email...");
-        const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 15000 });
-        if (emailInput) await humanType(emailInput, CANVA_EMAIL);
-
-        // STEP 3: Click "Continue"
-        console.log("   [3/5] Clicking Continue...");
-        await randomDelay(800, 1500);
-
-        const continueClicked = await page.evaluate(() => {
-            const spans = Array.from(document.querySelectorAll('span'));
-            const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue' || s.textContent?.trim() === 'Lanjutkan');
-            if (continueSpan) {
-                const button = continueSpan.closest('button');
-                if (button) {
-                    button.click();
-                    return true;
+        // A. Load User-Agent if Valid
+        if (fs.existsSync(uaFile)) {
+            try {
+                const savedUA = fs.readFileSync(uaFile, 'utf-8').trim();
+                if (savedUA.length > 0) {
+                    await page.setUserAgent(savedUA);
+                    console.log(`🎭 User-Agent Synced with Session: ${savedUA.substring(0, 40)}...`);
                 }
+            } catch (e) {
+                console.error("   ⚠️ Failed to sync User-Agent:", e);
             }
-            return false;
-        });
-
-        if (!continueClicked) await emailInput?.press('Enter');
-        await randomDelay(2500, 4000); // Wait for password field transition
-
-        // STEP 4: Password
-        console.log("   [4/5] Waiting for password field...");
-        // Re-fetch selector to avoid "Detached Node" error
-        const inputSelector = 'input[type="password"], input.bCVoGQ';
-        await page.waitForSelector(inputSelector, { timeout: 15000 });
-        const passInput = await page.$(inputSelector);
-
-        if (passInput) {
-            console.log("   [4/5] Entering Password...");
-            await randomDelay(500, 1000);
-            await humanType(passInput, CANVA_PASSWORD);
-        } else {
-            throw new Error("Password input field not found after wait.");
         }
 
-        // STEP 5: Click Log in
-        console.log("   [5/5] Clicking Log in...");
-        await randomDelay(1000, 2000);
+        // B. Load Cookies
+        if (fs.existsSync(cookieFile)) {
+            try {
+                console.log(`🍪 Found ${cookieFile}. Attempting Session Restore...`);
+                const cookiesStr = fs.readFileSync(cookieFile, 'utf-8');
+                const cookies = JSON.parse(cookiesStr);
 
-        const loginClicked = await page.evaluate(() => {
-            const spans = Array.from(document.querySelectorAll('span'));
-            const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in' || s.textContent?.trim() === 'Masuk');
-            if (loginSpan) {
-                const button = loginSpan.closest('button');
-                if (button) {
-                    button.click();
+                await page.setCookie(...cookies);
+                console.log(`   Loaded ${cookies.length} cookies.`);
+
+                await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'networkidle2', timeout: 60000 });
+                await randomDelay(2000, 3000);
+
+                if (page.url().includes('login') || page.url().includes('signup')) {
+                    console.log("   ❌ Cookie Expired. Falling back to Login...");
+                } else {
+                    console.log("   ✅ Session Restored!");
+                    isLoggedIn = true;
+                }
+            } catch (e) {
+                console.error("   ⚠️ Load cookie failed:", e);
+            }
+        }
+
+        if (!isLoggedIn && (!CANVA_EMAIL || !CANVA_PASSWORD)) {
+            throw new Error("CANVA_EMAIL & CANVA_PASSWORD required (or valid cookies)!");
+        }
+
+        if (!isLoggedIn) {
+            console.log(`🔐 Logging in as ${CANVA_EMAIL}...`);
+            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
+            await randomDelay(2000, 4000);
+
+            // STEP 1: Click "Continue with email" button
+            console.log("   [1/5] Looking for 'Continue with email' button...");
+            await randomDelay(1000, 2000);
+
+            const continueWithEmailBtn = await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const btn = buttons.find(b => b.textContent?.includes('Continue with email') || b.textContent?.includes('Lanjutkan dengan email'));
+                if (btn) {
+                    btn.click();
                     return true;
                 }
+                return false;
+            });
+
+            if (!continueWithEmailBtn) console.log("   'Continue with email' button not found, trying user input...");
+            await randomDelay(1200, 2500);
+
+            // STEP 2: Enter Email
+            console.log("   [2/5] Entering Email...");
+            const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 15000 });
+            if (emailInput) await humanType(emailInput, CANVA_EMAIL || "");
+
+            // STEP 3: Click "Continue"
+            console.log("   [3/5] Clicking Continue...");
+            await randomDelay(800, 1500);
+
+            const continueClicked = await page.evaluate(() => {
+                const spans = Array.from(document.querySelectorAll('span'));
+                const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue' || s.textContent?.trim() === 'Lanjutkan');
+                if (continueSpan) {
+                    const button = continueSpan.closest('button');
+                    if (button) {
+                        button.click();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (!continueClicked) await emailInput?.press('Enter');
+            await randomDelay(2500, 4000); // Wait for password field transition
+
+            // STEP 4: Password
+            console.log("   [4/5] Waiting for password field...");
+            const inputSelector = 'input[type="password"], input.bCVoGQ';
+            await page.waitForSelector(inputSelector, { timeout: 15000 });
+            const passInput = await page.$(inputSelector);
+
+            if (passInput) {
+                console.log("   [4/5] Entering Password...");
+                await randomDelay(500, 1000);
+                await humanType(passInput, CANVA_PASSWORD || "");
+            } else {
+                throw new Error("Password input field not found after wait.");
             }
-            return false;
-        });
 
-        if (!loginClicked) await passInput?.press('Enter');
+            // STEP 5: Click Log in
+            console.log("   [5/5] Clicking Log in...");
+            await randomDelay(1000, 2000);
 
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
-        console.log("✅ Login success!");
-        await randomDelay(3000, 5000);
+            const loginClicked = await page.evaluate(() => {
+                const spans = Array.from(document.querySelectorAll('span'));
+                const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in' || s.textContent?.trim() === 'Masuk');
+                if (loginSpan) {
+                    const button = loginSpan.closest('button');
+                    if (button) {
+                        button.click();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (!loginClicked) await passInput?.press('Enter');
+
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+            console.log("✅ Login success!");
+            await randomDelay(3000, 5000);
+        }
 
         // 4. Kick Loop
         let kickedCount = 0;
         let failCount = 0;
 
-        for (const user of expiredUsers.rows) {
-            const targetEmail = user.email as string;
+        for (const user of targets) {
+            const targetEmail = user.email;
             console.log(`⚔️ Processing Kick: ${targetEmail}`);
 
             try {
@@ -213,23 +279,14 @@ async function kickExpiredUsers() {
                 }
 
                 // A. Search for User
-                // Use the search input if available, or just scroll/find
                 console.log("   Searching for user...");
-                // Note: Implementing robust scrolling/finding is complex.
-                // For now, let's assume recent users are visible or we filter.
-
-                // Inspect logs show Checkbox input class "UufAxw"
-                // Strategy: Find row containing text "targetEmail", then get the checkbox inside it
                 const userRowFound = await page.evaluate(async (email: string) => {
-                    // Helper to find text
                     const elements = Array.from(document.querySelectorAll('td, div, span'));
                     const emailEl = elements.find(e => e.textContent?.trim() === email);
                     if (!emailEl) return false;
 
-                    // Traverse up to find the Row (TR)
                     let row = emailEl.closest('tr');
                     if (!row) {
-                        // Fallback: If div table, find closest common container
                         row = emailEl.closest('div[role="row"]') as any;
                     }
 
@@ -251,8 +308,7 @@ async function kickExpiredUsers() {
                 console.log("   ✅ User selected. Clicking Remove...");
                 await randomDelay(1000, 2000);
 
-                // B. Click "Remove users" Button (Appears after selection)
-                // Selector from logs: Aria: "Remove users", Class: ...h5mTDw
+                // B. Click "Remove users" Button
                 const removeMainBtn = await page.waitForSelector('button[aria-label="Remove users"]', { visible: true, timeout: 5000 });
                 if (removeMainBtn) {
                     await removeMainBtn.click();
@@ -263,7 +319,6 @@ async function kickExpiredUsers() {
                 await randomDelay(1000, 2000);
 
                 // C. Confirm Modal "Remove from team"
-                // Selector from logs: Span text "Remove from team", Class: khPe7Q
                 const confirmBtn = await page.evaluateHandle(() => {
                     const spans = Array.from(document.querySelectorAll('span'));
                     return spans.find(s => s.textContent?.includes('Remove from team'))?.parentElement;
@@ -274,16 +329,16 @@ async function kickExpiredUsers() {
                     console.log("   ✅ Kick Confirmed!");
                     kickedCount++;
 
-                    // Update DB
-                    // Update DB
-                    await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
-                    await sql("UPDATE subscriptions SET status = 'kicked' WHERE id = ?", [user.sub_id]);
-                    await sendTelegram(`🚫 <b>User Kicked</b>\nEmail: ${targetEmail}\nReason: Expired`);
+                    // Update DB (Only if not manual mode or if ID exists)
+                    if (user.id) {
+                        await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
+                        await sql("UPDATE subscriptions SET status = 'kicked' WHERE id = ?", [user.sub_id]);
+                    }
+                    await sendTelegram(`🚫 <b>User Kicked</b>\nEmail: ${targetEmail}\nReason: ${manualTarget ? 'Manual Kick' : 'Expired'}`);
                 } else {
                     throw new Error("Confirm button not found");
                 }
 
-                // Wait for success toast
                 await randomDelay(2000, 4000);
 
             } catch (kErr: any) {
@@ -306,4 +361,3 @@ async function kickExpiredUsers() {
 }
 
 kickExpiredUsers();
-

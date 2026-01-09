@@ -3,7 +3,7 @@ import { sql } from "../lib/db";
 import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
 import axios from "axios";
-// Axios already imported above
+import { exec } from "child_process";
 
 dotenv.config();
 
@@ -769,13 +769,25 @@ bot.callbackQuery("test_kick", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     await ctx.reply("🤖 Menjalankan <b>Auto-Kick</b> Job... (Wait)", { parse_mode: "HTML" });
 
-    // Serverless Mode: Cannot run exec
-    await ctx.reply(
-        "ℹ️ <b>Mode Serverless (Vercel):</b>\n" +
-        "Auto-Kick berjalan otomatis setiap jam via GitHub Actions.\n\n" +
-        "Tombol tes ini hanya berfungsi di Local Mode.",
-        { parse_mode: "HTML" }
-    );
+    if (process.env.VERCEL) {
+        await ctx.reply(
+            "ℹ️ <b>Mode Serverless (Vercel):</b>\n" +
+            "Auto-Kick berjalan otomatis setiap jam via GitHub Actions.\n\n" +
+            "Tombol tes ini hanya berfungsi di Local Mode.",
+            { parse_mode: "HTML" }
+        );
+    } else {
+        await ctx.reply("🚀 <b>Local Mode Detected:</b> Executing `npm run auto-kick`...", { parse_mode: "HTML" });
+        exec("npm run auto-kick", (error, stdout, stderr) => {
+            if (error) {
+                ctx.reply(`❌ <b>Error:</b>\n<pre>${error.message.substring(0, 200)}</pre>`, { parse_mode: "HTML" });
+                return;
+            }
+            // Send truncated output
+            const out = stdout.length > 500 ? stdout.substring(stdout.length - 500) : stdout;
+            ctx.reply(`✅ <b>Done:</b>\n<pre>${out}</pre>`, { parse_mode: "HTML" });
+        });
+    }
     await ctx.answerCallbackQuery();
 });
 

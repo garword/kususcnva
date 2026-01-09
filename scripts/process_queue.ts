@@ -137,6 +137,16 @@ async function runPuppeteerQueue() {
         const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
         const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
 
+        // 0. RESTORE SESSION FROM ENV (FOR GITHUB ACTIONS)
+        if (process.env.CANVA_COOKIES) {
+            console.log("📂 Restoring Cookies from Env Var...");
+            fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
+        }
+        if (process.env.CANVA_USER_AGENT) {
+            console.log("📂 Restoring User-Agent from Env Var...");
+            fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
+        }
+
         // 🎭 USER-AGENT POOL (Realistic & Updated 2026)
         const userAgentPool = [
             // Windows Chrome (Most common)
@@ -156,8 +166,24 @@ async function runPuppeteerQueue() {
         ];
 
         // Random selection
-        const userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
-        console.log(`🎭 Using User-Agent: ${userAgent.substring(0, 60)}...`);
+        // Random selection default
+        let userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
+
+        // OVERRIDE: Use Saved User-Agent if available (Sync with Cookies)
+        const uaFile = 'auth_user_agent.txt';
+        if (fs.existsSync(uaFile)) {
+            try {
+                const savedUA = fs.readFileSync(uaFile, 'utf-8').trim();
+                if (savedUA.length > 0) {
+                    userAgent = savedUA;
+                    console.log(`🎭 Using SAVED User-Agent (Matched with Cookie): ${userAgent.substring(0, 60)}...`);
+                }
+            } catch (e) {
+                console.error("   ⚠️ Failed to load saved User-Agent:", e);
+            }
+        } else {
+            console.log(`🎭 Using Random User-Agent: ${userAgent.substring(0, 60)}...`);
+        }
 
         const browser = await puppeteer.launch({
             executablePath: chromePath,
@@ -235,11 +261,41 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
-        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK
+        // AUTHENTICATION STRATEGY: COOKIE PRIORITY -> EMAIL/PASSWORD FALLBACK
+        const cookieFile = 'auth_cookies.json';
+        let isLoggedIn = false;
+
+        // 1. TRY COOKIE LOGIN FIRST
+        if (fs.existsSync(cookieFile)) {
+            try {
+                console.log(`🍪 Found ${cookieFile}. Attempting Session Restore...`);
+                const cookiesStr = fs.readFileSync(cookieFile, 'utf-8');
+                const cookies = JSON.parse(cookiesStr);
+
+                // Set cookies
+                await page.setCookie(...cookies);
+                console.log(`   Loaded ${cookies.length} cookies.`);
+
+                // Verify Session
+                await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'networkidle2' });
+                await randomDelay(2000, 3000);
+
+                if (page.url().includes('login') || page.url().includes('signup')) {
+                    console.log("   ❌ Cookie Expired or Invalid. Falling back to Email Login...");
+                } else {
+                    console.log("   ✅ Session Restored via Cookie! Bypassing Login.");
+                    isLoggedIn = true;
+                }
+
+            } catch (e) {
+                console.error("   ⚠️ Failed to load cookies:", e);
+            }
+        }
+
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
 
-        if (canvaEmail && canvaPassword) {
+        if (!isLoggedIn && canvaEmail && canvaPassword) {
             console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
             await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
@@ -366,8 +422,8 @@ async function runPuppeteerQueue() {
                 // DISABLED COOKIE FALLBACK - Force Email/Password Login Only
                 throw new Error("Email/Password login required. Cookie fallback disabled.");
             }
-        } else {
-            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env");
+        } else if (!isLoggedIn) {
+            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env (or valid auth_cookies.json required)");
         }
 
         // COOKIE LOADING DISABLED - Using Fresh Login Only
