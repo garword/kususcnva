@@ -494,7 +494,19 @@ async function runPuppeteerQueue() {
                     await randomDelay(500, 1000); // Look around
 
                     const inviteButtonFound = await page.evaluate(() => {
-                        const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
+                        // Comprehensive XPath for Edu/Pro/Personal in English & Indonesian
+                        const keywords = [
+                            'Invite people', 'Undang orang',
+                            'Add students', 'Tambahkan siswa', 'Undang siswa', 'Invite students',
+                            'Add people', 'Tambahkan orang',
+                            'Invite members', 'Undang anggota',
+                            'Add members', 'Tambahkan anggota'
+                        ];
+
+                        // Construct XPath: //button[contains(., 'Key1') or contains(., 'Key2') ...]
+                        const conditions = keywords.map(k => `contains(., '${k}')`).join(' or ');
+                        const xpath = `//button[${conditions}]`;
+
                         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
                         const button = result.singleNodeValue as HTMLElement;
                         if (button) {
@@ -535,9 +547,11 @@ async function runPuppeteerQueue() {
                     console.log('   [DEBUG] Waiting for email input to appear...');
                     await randomDelay(800, 1500);
 
-                    const emailInput = await page.$('input[aria-label="Enter email for person 1"]');
+                    const emailInput = await page.$('input[aria-label="Enter email for person 1"], input[type="email"], input[placeholder*="email"], input[placeholder*="Email"], textarea');
                     if (!emailInput) {
-                        throw new Error("Email input not found in popup");
+                        // Extensive dump if input missing
+                        const pageContent = await page.content();
+                        throw new Error("Email input field not found in invite popup (Edu/Pro layout difference?)");
                     }
 
                     // 3. Type email using HUMAN TYPING
