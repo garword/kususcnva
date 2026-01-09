@@ -3,7 +3,7 @@ import { sql } from "../lib/db";
 import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
 import axios from "axios";
-import { exec } from "child_process";
+// Axios already imported above
 
 dotenv.config();
 
@@ -755,14 +755,13 @@ bot.callbackQuery("test_invite", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     await ctx.reply("🤖 Menjalankan <b>Auto-Invite</b> Queue... (Wait)", { parse_mode: "HTML" });
 
-    exec("npm run process-queue", (error, stdout, stderr) => {
-        const output = stdout.length > 2000 ? stdout.substring(stdout.length - 2000) : stdout;
-        if (error) {
-            ctx.reply(`❌ <b>Failed:</b>\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
-        } else {
-            ctx.reply(`✅ <b>Invite Done!</b>\n<pre>${output}</pre>`, { parse_mode: "HTML" });
-        }
-    });
+    // Serverless Mode: Cannot run exec. Insert fake "trigger" to queue logic if needed, or just tell user to wait for cron.
+    await ctx.reply(
+        "ℹ️ <b>Mode Serverless (Vercel):</b>\n" +
+        "Auto-Invite berjalan otomatis setiap jam via GitHub Actions.\n\n" +
+        "Tombol tes ini hanya berfungsi di Local Mode.",
+        { parse_mode: "HTML" }
+    );
     await ctx.answerCallbackQuery();
 });
 
@@ -770,14 +769,13 @@ bot.callbackQuery("test_kick", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     await ctx.reply("🤖 Menjalankan <b>Auto-Kick</b> Job... (Wait)", { parse_mode: "HTML" });
 
-    exec("npm run auto-kick", (error, stdout, stderr) => {
-        const output = stdout.length > 2000 ? stdout.substring(stdout.length - 2000) : stdout;
-        if (error) {
-            ctx.reply(`❌ <b>Failed:</b>\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
-        } else {
-            ctx.reply(`✅ <b>Kick Done!</b>\n<pre>${output}</pre>`, { parse_mode: "HTML" });
-        }
-    });
+    // Serverless Mode: Cannot run exec
+    await ctx.reply(
+        "ℹ️ <b>Mode Serverless (Vercel):</b>\n" +
+        "Auto-Kick berjalan otomatis setiap jam via GitHub Actions.\n\n" +
+        "Tombol tes ini hanya berfungsi di Local Mode.",
+        { parse_mode: "HTML" }
+    );
     await ctx.answerCallbackQuery();
 });
 
@@ -862,16 +860,13 @@ bot.command("testkick", async (ctx) => {
 
     await ctx.reply("🤖 Menjalankan Auto-Kick Script... (Mohon tunggu)");
 
-    exec("npm run auto-kick", (error, stdout, stderr) => {
-        if (error) {
-            ctx.reply(`❌ Eksekusi Gagal:\n<pre>${error.message}</pre>`, { parse_mode: "HTML" });
-            return;
-        }
-
-        // Kirim sebagian output ke Telegram (karena limit karakter)
-        const output = stdout.length > 3000 ? stdout.substring(stdout.length - 3000) : stdout;
-        ctx.reply(`✅ <b>Auto-Kick Selesai!</b>\nOutput:\n<pre>${output}</pre>`, { parse_mode: "HTML" });
-    });
+    // Serverless Mode: Cannot run exec
+    await ctx.reply(
+        "ℹ️ <b>Mode Serverless (Vercel):</b>\n" +
+        "Auto-Kick berjalan otomatis setiap jam via GitHub Actions.\n\n" +
+        "Perintah tes ini hanya berfungsi di Local Mode.",
+        { parse_mode: "HTML" }
+    );
 });
 
 // Error handling basic
