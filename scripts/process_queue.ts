@@ -152,6 +152,7 @@ async function runPuppeteerQueue() {
             executablePath: chromePath,
             headless: process.env.CI ? "new" : false,
             defaultViewport: null,
+            ignoreDefaultArgs: ['--enable-automation'], // 🙈 HIDE "Chrome is being controlled..."
             userDataDir: './chrome_profile', // 💾 PERSISTENT SESSION (Disimpan di Cache GitHub)
             args: [
                 '--no-sandbox',
