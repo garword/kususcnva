@@ -523,188 +523,55 @@ async function runPuppeteerQueue() {
                     }
 
                     console.log('   [DEBUG] Clicking Invite button...');
-                    await randomDelay(1500, 2500); // Wait for popup animation (human-like)
+                    await randomDelay(1500, 2500);
 
-                    // 2. Wait for and find email input
-                    console.log('   [DEBUG] Waiting for email input to appear...');
-                    await randomDelay(800, 1500);
+                    // --- VIA CODE FLOW ONLY (Email Disabled) ---
+                    console.log('   [DEBUG] Starting "Via Code" Flow (Email Invite Disabled)...');
 
-                    const emailInput = await page.$('input[aria-label="Enter email for person 1"]');
-                    if (!emailInput) {
-                        throw new Error("Email input not found in popup");
-                    }
+                    try {
+                        const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 10000 });
+                        if (viaCodeBtn) {
+                            await viaCodeBtn.click();
+                            await new Promise(r => setTimeout(r, 2000));
 
-                    // 3. Type email using HUMAN TYPING
-                    console.log('   [DEBUG] Typing email with human-like behavior...');
-                    await humanType(emailInput, email); // Natural typing with pauses!
+                            const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 10000 });
+                            if (copyCodeBtn) {
+                                await copyCodeBtn.click();
+                                await new Promise(r => setTimeout(r, 1000));
 
-                    // 4. Trigger blur to start validation
-                    console.log('   [DEBUG] Triggering validation...');
-                    await page.keyboard.press('Tab'); // Move focus away
-                    await randomDelay(1500, 2500); // Initial wait for validation to start
-
-                    // 5. Wait for Send button to become enabled
-                    console.log('   [DEBUG] Waiting for Send button to enable...');
-                    let buttonEnabled = false;
-                    let waitAttempts = 0;
-                    const maxWait = 30; // 30 attempts = 15 seconds max
-
-                    while (!buttonEnabled && waitAttempts < maxWait) {
-                        const buttonState = await page.evaluate(() => {
-                            const xpath = "//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button";
-                            const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                            const button = result.singleNodeValue as HTMLButtonElement;
-
-                            if (button) {
-                                return {
-                                    found: true,
-                                    ariaDisabled: button.getAttribute('aria-disabled'),
-                                    disabled: button.disabled
-                                };
+                                const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+                                if (code) {
+                                    result = { success: true, message: code };
+                                    console.log(`   [DEBUG] Success! Code: ${code}`);
+                                } else {
+                                    throw new Error("Could not read code/link from clipboard after clicking Copy");
+                                }
+                            } else {
+                                throw new Error("Copy code button not found");
                             }
-                            return { found: false, ariaDisabled: null, disabled: null };
-                        });
-
-                        if (buttonState && buttonState.found) {
-                            buttonEnabled = buttonState.ariaDisabled !== 'true' && !buttonState.disabled;
-
-                            if (waitAttempts % 5 === 0) { // Log every 5 attempts (2.5 seconds)
-                                console.log(`   [DEBUG] Attempt ${waitAttempts}/${maxWait} - aria-disabled: ${buttonState.ariaDisabled}, disabled: ${buttonState.disabled}`);
-                            }
-
-                            if (buttonEnabled) {
-                                console.log('   [DEBUG] Button enabled! Clicking Send...');
-                                // Click the button
-                                await page.evaluate(() => {
-                                    const xpath = "//span[contains(text(), 'Send invitations') or contains(text(), 'Kirim undangan')]/ancestor::button";
-                                    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                                    const button = result.singleNodeValue as HTMLButtonElement;
-                                    if (button) button.click();
-                                });
-                                break;
-                            }
+                        } else {
+                            throw new Error("Via code button not found");
                         }
-
-                        await new Promise(r => setTimeout(r, 500));
-                        waitAttempts++;
+                    } catch (viaCodeErr: any) {
+                        console.error('   [DEBUG] Via Code Flow Failed:', viaCodeErr.message);
+                        throw viaCodeErr; // Re-throw to be caught by outer handler
                     }
-
-                    if (!buttonEnabled) {
-                        throw new Error(`Send button did not enable after ${waitAttempts * 0.5} seconds`);
-                    }
-
-                    // 6. Wait for and verify success notification
-                    console.log('   [DEBUG] Waiting for success notification...');
-                    await new Promise(r => setTimeout(r, 5000)); // Increased wait time
 
                     // CAPTURE SCREENSHOT (Evidence)
-                    const screenshotPath = `debug_after_send_${Date.now()}.jpg`;
+                    const screenshotPath = `debug_after_viacode_${Date.now()}.jpg`;
                     await page.screenshot({ path: screenshotPath, fullPage: false });
                     console.log(`   [DEBUG] Screenshot saved: ${screenshotPath}`);
 
-                    // Check for success notification (Text based, more robust than selector)
-                    const successToast = await page.evaluate(() => {
-                        const text = document.body.innerText;
-                        return text.includes('Invitation sent') ||
-                            text.includes('Undangan terkirim') ||
-                            text.includes('Invited') ||
-                            !!document.querySelector('div[role="alert"]');
-                    });
-
-                    if (successToast) {
-                        console.log('   [DEBUG] ✅ Success Notification Detected! Verifying if user is really in the list...');
-
-                        // 7. Post-Invite Verification (Ultimate Check for Ghost Invites)
-                        await new Promise(r => setTimeout(r, 2000)); // Wait for backend sync
-                        await page.reload({ waitUntil: 'networkidle2' });
-
-                        console.log('   [DEBUG] Searching for user in team list...');
-                        // Reuse existing logic from manual check or kick
-                        const searchInput = await page.waitForSelector('input[type="text"], input[role="searchbox"]', { timeout: 10000 });
-                        if (searchInput) {
-                            await searchInput.type(email);
-                            await new Promise(r => setTimeout(r, 3000)); // Wait for search results
-
-                            const userFound = await page.evaluate((targetEmail: string) => {
-                                const bodyText = document.body.innerText;
-                                return bodyText.includes(targetEmail);
-                            }, email);
-
-                            if (userFound) {
-                                console.log('   [DEBUG] ✅ User Verified in List! Real Success.');
-                                result = { success: true, message: 'Invited & Verified' };
-                            } else {
-                                console.log('   [DEBUG] ❌ GHOST INVITE DETECTED! (Success Toast appeared but user not in list)');
-                                await sendSystemLog(`👻 <b>Ghost Invite Detected!</b>\nEmail: ${email}\nBot saw success toast, but user is NOT in the list.\nThis might be a shadowban or delay.`);
-                                throw new Error("Ghost Invite: Success toast appeared, but user not found in list.");
-                            }
-                        } else {
-                            console.log('   [DEBUG] ⚠️ Warning: Could not find search box for verification. Assuming success.');
-                            result = { success: true, message: 'Invited (Verification Skipped)' };
-                        }
+                    if (result.success) {
+                        // Skip validation check for email since we are using code
                     } else {
-                        // Check for specific error message (Security reasons)
-                        const securityWarning = await page.evaluate(() => {
-                            const text = document.body.innerText;
-                            return text.includes("Security reasons") || text.includes("alasan keamanan");
-                        });
-
-                        if (securityWarning) {
-                            throw new Error("Security reasons detected on screen");
-                        }
-
-                        console.log('   [DEBUG] ❌ Failed - No success notification found');
-
-                        // SEND EVIDENCE TO TELEGRAM
-                        const targetChat = LOG_CHANNEL_ID || ADMIN_ID;
-                        if (targetChat) {
-                            await sendSystemLog(`⚠️ <b>Invite Failed (False Positive?)</b>\nBot clicked send, but no success toast appeared.\nSee attached screenshot.`);
-                            await sendTelegramPhoto(targetChat, screenshotPath, `Debug: After Click (${email})`);
-                        }
-
-                        throw new Error("No success toast detected. Marked as FAILED.");
+                        throw new Error("Failed to get Code/Link");
                     }
                     // End of validation check
 
                 } catch (error: any) {
-                    if (error.message.includes("Security reasons") || error.message.includes("RRS-")) {
-                        console.log("⚠️ Security Block Detected! Attempting fallback to Invite Link...");
-
-                        // FALLBACK 1: TRY "VIA CODE" (User Priority)
-                        try {
-                            console.log("   [DEBUG] Attempting Fallback 1: Via Code...");
-                            const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 5000 });
-                            if (viaCodeBtn) {
-                                await viaCodeBtn.click();
-                                await new Promise(r => setTimeout(r, 2000));
-
-                                const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 5000 });
-                                if (copyCodeBtn) {
-                                    await copyCodeBtn.click();
-                                    await new Promise(r => setTimeout(r, 1000));
-
-                                    const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
-                                    if (code) {
-                                        result = { success: true, message: code };
-                                        console.log(`   [DEBUG] Fallback 1 Success! Code: ${code}`);
-                                        throw "SUCCESS_VIA_CODE"; // Break out of fallback chain handled in outer catch? No, simpler to just set result.
-                                    }
-                                }
-                            }
-                        } catch (codeError) {
-                            if (codeError === "SUCCESS_VIA_CODE") {
-                                // Already handled above, just skip to end
-                            } else {
-                                console.log("   [DEBUG] Fallback 1 (Via Code) Failed.");
-                            }
-                        }
-
-                        if (!result || !result.success) {
-                            result = { success: false, message: error.message + " (Security Block & Via Code Failed)" };
-                        }
-                    } else {
-                        result = { success: false, message: error.message };
-                    }
+                    console.error("Invite Process Error:", error.message);
+                    result = { success: false, message: error.message };
                 }
 
                 if (result.success) {
