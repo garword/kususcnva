@@ -625,7 +625,7 @@ async function runPuppeteerQueue() {
                             await searchInput.type(email);
                             await new Promise(r => setTimeout(r, 3000)); // Wait for search results
 
-                            const userFound = await page.evaluate((targetEmail) => {
+                            const userFound = await page.evaluate((targetEmail: string) => {
                                 const bodyText = document.body.innerText;
                                 return bodyText.includes(targetEmail);
                             }, email);
