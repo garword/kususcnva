@@ -255,17 +255,99 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
-        // AUTHENTICATION STRATEGY: COOKIE PRIORITY -> EMAIL/PASSWORD FALLBACK
+        // AUTHENTICATION STRATEGY: EMAIL/PASSWORD PRIORITY -> COOKIE FALLBACK (User Request)
         const canvaEmail = process.env.CANVA_EMAIL;
         const canvaPassword = process.env.CANVA_PASSWORD;
         let isLoggedIn = false;
 
-        // 1. TRY COOKIE LOGIN FIRST (Bypass IP Checks)
-        const cookieStr = String(cookie);
-        if (cookieStr && cookieStr.length > 20) {
-            console.log("🍪 Attempting Login with Saved Cookie...");
+        // 1. TRY PASSWORD LOGIN FIRST
+        if (canvaEmail && canvaPassword) {
+            console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
+            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
+            await randomDelay(1500, 3000);
 
-            // Parse Cookie String to Object Array
+            try {
+                // ... (Flow Login Step 1-5 yang ada sebelumnya) ...
+                // STEP 1: Click "Continue with email" or Input Directly
+                console.log("   [1/5] Looking for 'Continue with email' button...");
+                if (Math.random() < 0.3) await randomScroll();
+
+                const continueWithEmailBtn = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const btn = buttons.find(b => b.textContent?.includes('Continue with email'));
+                    if (btn) { btn.click(); return true; }
+                    return false;
+                });
+
+                await randomDelay(1200, 2500);
+
+                // STEP 2: Enter Email
+                console.log("   [2/5] Entering Email...");
+                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 }).catch(() => null);
+
+                if (emailInput) {
+                    await humanType(emailInput, canvaEmail);
+                    await randomDelay(800, 1500);
+
+                    // STEP 3: Click Continue
+                    console.log("   [3/5] Clicking Continue...");
+                    const continueClicked = await page.evaluate(() => {
+                        const spans = Array.from(document.querySelectorAll('span'));
+                        const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
+                        if (continueSpan) { continueSpan.closest('button')?.click(); return true; }
+                        return false;
+                    });
+                    if (!continueClicked) await emailInput.press('Enter');
+                }
+
+                // STEP 4: Password
+                console.log("   [4/5] Waiting for password field...");
+                await randomDelay(2500, 4000);
+                const passInput = await page.waitForSelector('input[type="password"], input.bCVoGQ', { timeout: 15000 }).catch(() => null);
+
+                if (passInput) {
+                    console.log("   [4/5] Entering Password...");
+                    await humanType(passInput, canvaPassword);
+                    await randomDelay(1000, 2000);
+
+                    // STEP 5: Log in
+                    console.log("   [5/5] Clicking Log in...");
+                    const loginClicked = await page.evaluate(() => {
+                        const spans = Array.from(document.querySelectorAll('span'));
+                        const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
+                        if (loginSpan) { loginSpan.closest('button')?.click(); return true; }
+                        return false;
+                    });
+                    if (!loginClicked) await passInput.press('Enter');
+                }
+
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+                console.log("   ✅ Login Submitted. checking access...");
+                await randomDelay(3000, 5000);
+
+                // Check Success
+                if (!page.url().includes("login") && !page.url().includes("signup")) {
+                    console.log("   ✅ Login Successful via Password!");
+                    isLoggedIn = true;
+
+                    // SAVE NEW COOKIE
+                    const cookies = await page.cookies();
+                    const cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
+                    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
+                    console.log("   💾 Session Cookie Saved for Future Fallback!");
+                }
+
+            } catch (loginErr: any) {
+                console.error("❌ Password Login Failed:", loginErr.message);
+                // Continue to Cookie Fallback...
+            }
+        }
+
+        // 2. FALLBACK: COOKIE LOGIN (If Password Failed)
+        const cookieStr = String(cookie);
+        if (!isLoggedIn && cookieStr && cookieStr.length > 20) {
+            console.log("⚠️ Password Login Failed/Skipped. Trying Cookie Fallback...");
+
             const cookieObjects = cookieStr.split(';').map(c => {
                 const [name, ...v] = c.trim().split('=');
                 return { name, value: v.join('='), domain: '.canva.com', path: '/' };
@@ -273,138 +355,14 @@ async function runPuppeteerQueue() {
 
             await page.setCookie(...cookieObjects);
 
-            // Verify Session
             console.log("   Verifying session...");
             await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2' });
 
-            // Check if redirected to login
             if (!page.url().includes("login") && !page.url().includes("signup")) {
-                console.log("   ✅ Cookie Valid! Session Active.");
+                console.log("   ✅ Fallback Cookie Valid! Session Active.");
                 isLoggedIn = true;
             } else {
-                console.log("   ❌ Cookie Invalid/Expired. Falling back to Password...");
-            }
-        }
-
-        // 2. FALLBACK: PASSWORD LOGIN (Only if Cookie Failed)
-        if (!isLoggedIn && canvaEmail && canvaPassword) {
-            console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
-            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
-
-            // Random initial idle (like human arriving at page)
-            await randomDelay(1500, 3000);
-
-            try {
-                // STEP 1: Click "Continue with email" button
-                console.log("   [1/5] Looking for 'Continue with email' button...");
-                await randomDelay(1000, 2000); // Human reads the page
-
-                // Occasional scroll to mimic browsing
-                if (Math.random() < 0.3) await randomScroll();
-
-                const continueWithEmailBtn = await page.evaluate(() => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const btn = buttons.find(b => b.textContent?.includes('Continue with email'));
-                    if (btn) {
-                        btn.click();
-                        return true;
-                    }
-                    return false;
-                });
-
-                if (!continueWithEmailBtn) {
-                    console.log("   'Continue with email' button not found, might be direct email form");
-                }
-
-                await randomDelay(1200, 2500); // Wait for form transition
-
-                // STEP 2: Enter Email (HUMAN-LIKE TYPING)
-                console.log("   [2/5] Entering Email...");
-                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 });
-                if (emailInput) {
-                    await humanType(emailInput, canvaEmail); // Use human typing!
-                }
-
-                // STEP 3: Click "Continue" button (span with text "Continue")
-                console.log("   [3/5] Clicking Continue...");
-                await randomDelay(800, 1500); // Think before clicking
-
-                const continueClicked = await page.evaluate(() => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
-                    if (continueSpan) {
-                        const button = continueSpan.closest('button');
-                        if (button) {
-                            button.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-
-                if (!continueClicked) {
-                    console.log("   Continue button not found, trying Enter key...");
-                    await emailInput?.press('Enter');
-                }
-
-                // STEP 4: Wait for Password Field & Enter Password
-                console.log("   [4/5] Waiting for password field...");
-                await randomDelay(2500, 4000); // Give extra time for transition/re-render
-
-                // Re-fetch selector to avoid "Detached Node" error
-                const inputSelector = 'input[type="password"], input.bCVoGQ';
-                await page.waitForSelector(inputSelector, { timeout: 15000 });
-                const passInput = await page.$(inputSelector);
-
-                if (passInput) {
-                    console.log("   [4/5] Entering Password...");
-                    await randomDelay(500, 1000); // Pause before typing
-                    await humanType(passInput, canvaPassword); // Human typing!
-                } else {
-                    throw new Error("Password input field not found after wait.");
-                }
-
-                // STEP 5: Click "Log in" button (span with text "Log in")
-                console.log("   [5/5] Clicking Log in...");
-                await randomDelay(1000, 2000); // Think before final click
-
-                const loginClicked = await page.evaluate(() => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
-                    if (loginSpan) {
-                        const button = loginSpan.closest('button');
-                        if (button) {
-                            button.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-
-                if (!loginClicked) {
-                    console.log("   Log in button not found, trying Enter key...");
-                    await passInput?.press('Enter');
-                }
-
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
-                console.log("   ✅ Login Submitted. checking access...");
-
-                // Human pause after login
-                await randomDelay(2000, 4000);
-
-                // CAPTURE LOGIN SUCCESS SCREENSHOT
-                const loginShotPath = `login_success_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: loginShotPath, quality: 60, type: 'jpeg' });
-                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, loginShotPath, `✅ <b>Login Success</b>\nBerhasil masuk ke akun Canva!`);
-                    if (fs.existsSync(loginShotPath)) fs.unlinkSync(loginShotPath);
-                } catch (e) { console.error("Snapshot failed", e); }
-
-                await randomDelay(2000, 3000); // Allow redirect
-
-            } catch (loginErr: any) {
-                console.error("❌ Login Failed:", loginErr);
-                // Notification logic...
+                console.log("   ❌ Fallback Cookie Invalid/Expired.");
             }
         }
 
@@ -417,18 +375,17 @@ async function runPuppeteerQueue() {
                 throw new Error("All login methods failed (Cookie & Password). Check credentials/IP.");
             }
         }
-
-        // COOKIE LOADING DISABLED - Using Fresh Login Only
         /*
-        if (cookie) {
-            console.log("🍪 Loading Backup Cookies...");
-            const cookieObjects = cookie.split(';').map(c => {
-                const [name, ...v] = c.trim().split('=');
-                return { name, value: v.join('='), domain: '.canva.com', path: '/' };
-            }).filter(c => c.name && c.value);
-            await page.setCookie(...cookieObjects);
-        }
-        */
+            // COOKIE LOADING DISABLED - Using Fresh Login Only
+            if (cookie) {
+                console.log("🍪 Loading Backup Cookies...");
+                const cookieObjects = cookie.split(';').map(c => {
+                    const [name, ...v] = c.trim().split('=');
+                    return { name, value: v.join('='), domain: '.canva.com', path: '/' };
+                }).filter(c => c.name && c.value);
+                await page.setCookie(...cookieObjects);
+            }
+            */
 
         let successInvites = 0;
         let failInvites = 0;
