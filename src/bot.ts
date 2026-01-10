@@ -904,7 +904,7 @@ bot.callbackQuery(/^pkg_qty_(inc|dec)_(\d+)$/, async (ctx) => {
     if (newQty === currentQty) return ctx.answerCallbackQuery(action === "inc" ? "Maksimal 2x" : "Minimal 1x");
 
     const points = 6 * newQty;
-    const label = newQty === 1 ? "1 Akun (6 Bln)" : "2 Akun (12 Bln)";
+    const label = newQty === 1 ? "1 Akun (6 Bln)" : "1 Akun (12 Bln)";
 
     // Rebuild Keyboard
     const keyboard = new InlineKeyboard()
