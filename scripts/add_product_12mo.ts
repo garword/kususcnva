@@ -1,4 +1,4 @@
-import { sql } from '../src/lib/db';
+import { sql } from '../lib/db';
 
 async function migrate() {
     try {
