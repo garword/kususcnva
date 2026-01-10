@@ -6,6 +6,7 @@ import { sql } from '../lib/db';
 import * as dotenv from 'dotenv';
 import axios from 'axios';
 import fs from 'fs';
+import { TimeUtils } from '../src/lib/time';
 
 dotenv.config();
 
@@ -90,7 +91,7 @@ async function sendSystemLog(message: string) {
     if (!BOT_TOKEN || !target) return;
 
     // Add timestamp header
-    const time = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+    const time = TimeUtils.format(); // Consistent WIB Time
     const logMsg = `📝 <b>System Log</b> [${time}]\n\n${message}`;
 
     try {
@@ -575,9 +576,11 @@ async function runPuppeteerQueue() {
             const prodId = (user as any).prod_id || 1;
 
             // Calculate End Date for visual log (Approx)
-            const endDateObj = new Date();
-            endDateObj.setDate(endDateObj.getDate() + duration);
-            const endDateStr = endDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+            // Calculate End Date for visual log (Precise WIB)
+            // const endDateObj = new Date();
+            // endDateObj.setDate(endDateObj.getDate() + duration);
+            const endDateObj = TimeUtils.addDays(duration);
+            const endDateStr = TimeUtils.format(endDateObj);
 
             console.log(`📧 Processing Invite: ${email} (${duration} days)`);
 
@@ -699,11 +702,23 @@ async function runPuppeteerQueue() {
                     successInvites++;
 
                     // Create Subscription Record
+                    // Create Subscription Record
                     const subId = `sub_${Date.now()}_${userId}`;
+
+                    // Precise Start/End Date Calculation (WIB)
+                    const wibNow = TimeUtils.sqliteNow();
+                    const wibEnd = TimeUtils.sqliteNow(); // We will use manual calc in JS if needed or just trust DB relative
+                    // Better: Use JS to calculate EXACT dates
+                    const startDateObj = TimeUtils.now();
+                    const endDateObj = TimeUtils.addDays(duration);
+
+                    const startStr = startDateObj.toISOString().replace('T', ' ').substring(0, 19);
+                    const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
+
                     await sql(`
                         INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
-                        VALUES (?, ?, ?, datetime('now'), datetime('now', '+${duration} days'), 'active')
-                    `, [subId, userId, prodId]);
+                        VALUES (?, ?, ?, ?, ?, 'active')
+                    `, [subId, userId, prodId, startStr, endStr]);
 
                     if (userId > 0) {
                         let msgId = null;
