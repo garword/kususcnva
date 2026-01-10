@@ -1760,20 +1760,25 @@ bot.command("data", async (ctx) => {
 
         // 2. Format Header & Content
         const now = new Date();
-        const day = String(now.getDate()).padStart(2, '0');
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const year = now.getFullYear();
-        const dateStr = `${day}-${month}-${year}`;
+        const nowJakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+
+        const day = String(nowJakarta.getDate()).padStart(2, '0');
+        const month = String(nowJakarta.getMonth() + 1).padStart(2, '0');
+        const year = nowJakarta.getFullYear();
+        const hour = String(nowJakarta.getHours()).padStart(2, '0');
+        const minute = String(nowJakarta.getMinutes()).padStart(2, '0');
+
+        const dateStr = `${day}-${month}-${year}_${hour}${minute}`;
         const fileName = `data-${dateStr}.txt`;
 
         let content = `LAPORAN DATA BOT CANVA\n`;
-        content += `Tanggal Generate: ${now.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n`;
+        content += `Tanggal Generate: ${nowJakarta.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n`;
         content += `Total User: ${res.rows.length}\n`;
         content += `======================================================================================================================================================\n`;
-        content += `ID         | USERNAME           | NAMA                 | EMAIL                            | PAKET           | EXPIRED      | POIN  | JOIN DATE   \n`;
+        content += `ID         | USERNAME           | NAMA                 | EMAIL                            | PAKET           | EXPIRED (WIB)| POIN  | JOIN DATE   \n`;
         content += `======================================================================================================================================================\n`;
 
-        for (const row of res.rows) { // MATCHED
+        for (const row of res.rows) {
             const id = String(row.id).padEnd(10);
             const username = String(row.username ? `@${row.username}` : "-").padEnd(18);
             const name = String(row.first_name || "No Name").substring(0, 20).padEnd(20);
@@ -1781,11 +1786,30 @@ bot.command("data", async (ctx) => {
             // Consolidated status logic: Show Plan Name, or sub_status if plan unknown
             const plan = String(row.plan_name || (row.sub_status === 'active' ? 'Active' : '-')).padEnd(15);
 
+            // Format End Date to WIB
             const expDateRaw = row.end_date ? new Date(row.end_date as string) : null;
-            const expDate = expDateRaw ? String(expDateRaw.toISOString().split('T')[0]).padEnd(12) : "-           ";
+            let expDate = "-           ";
+            if (expDateRaw) {
+                // Convert to parts for custom formatting yyyy-mm-dd
+                const jktDate = new Date(expDateRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+                const y = jktDate.getFullYear();
+                const m = String(jktDate.getMonth() + 1).padStart(2, '0');
+                const d = String(jktDate.getDate()).padStart(2, '0');
+                expDate = `${y}-${m}-${d}`.padEnd(12);
+            }
 
             const points = String(row.referral_points || 0).padEnd(5);
-            const joinDate = row.joined_at ? String(new Date(row.joined_at as string).toISOString().split('T')[0]) : "-";
+
+            // Format Join Date to WIB
+            let joinDate = "-";
+            if (row.joined_at) {
+                const joinRaw = new Date(row.joined_at as string);
+                const jktJoin = new Date(joinRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+                const y = jktJoin.getFullYear();
+                const m = String(jktJoin.getMonth() + 1).padStart(2, '0');
+                const d = String(jktJoin.getDate()).padStart(2, '0');
+                joinDate = `${y}-${m}-${d}`;
+            }
 
             content += `${id} | ${username} | ${name} | ${email} | ${plan} | ${expDate} | ${points} | ${joinDate}\n`;
         }
