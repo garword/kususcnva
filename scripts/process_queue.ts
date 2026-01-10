@@ -730,7 +730,7 @@ async function runPuppeteerQueue() {
 
                             // Try Edit First
                             if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId.toString(), parseInt(lastMsgId), text);
+                                msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text);
                             }
                             // Fallback to Send
                             if (!msgId) {
@@ -744,7 +744,7 @@ async function runPuppeteerQueue() {
 
                             // Try Edit First
                             if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId.toString(), parseInt(lastMsgId), text, { disable_web_page_preview: true });
+                                msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text, { disable_web_page_preview: true });
                             }
                             // Fallback to Send
                             if (!msgId) {
