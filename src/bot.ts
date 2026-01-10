@@ -662,7 +662,7 @@ bot.command("aktivasi", async (ctx) => {
         // ============================================================
         else {
             // B.1 Strict Check: Tidak boleh ambil jika masih aktif
-            if (activeSub) {
+            if (activeSub && !isAdmin(userId)) {
                 const expDate = new Date(activeSub.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium' });
                 return ctx.reply(
                     `⛔ <b>Akses Ditolak!</b>\n\n` +
@@ -887,11 +887,13 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     const expDate = sub ? new Date(sub.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : "-";
     const points = user.referral_points || 0;
     const refLink = `https://t.me/${ctx.me.username}?start=${user.referral_code}`;
+    const role = isAdmin(userId) ? "👑 Admin" : "👤 Member";
 
     await ctx.reply(
         `👤 <b>Profil Pengguna</b>\n\n` +
         `🆔 ID: <code>${userId}</code>\n` +
-        `👤 Nama: <b>${user.first_name}</b>\n\n` +
+        `👤 Nama: <b>${user.first_name}</b>\n` +
+        `🔰 Role: <b>${role}</b>\n\n` +
         `📊 <b>Status Akun:</b>\n` +
         `• Status: ${status}\n` +
         `• Paket: ${plan}\n` +
