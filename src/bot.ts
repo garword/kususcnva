@@ -1703,10 +1703,10 @@ bot.command("forceexpire", async (ctx) => {
 
         const userId = userRes.rows[0].id;
 
-        // Update Subscription jadi Expired (H-1)
-        await sql("UPDATE subscriptions SET end_date = datetime('now', '-1 day'), status = 'active' WHERE user_id = ?", [userId]);
+        // Update Subscription jadi Expired (H+2 Menit untuk Test Realtime Kick)
+        await sql("UPDATE subscriptions SET end_date = datetime('now', '+2 minutes'), status = 'active' WHERE user_id = ?", [userId]);
 
-        await ctx.reply(`✅ User <b>${email}</b> sekarang EXPIRED (H-1).\nSiap untuk dikick.`, { parse_mode: "HTML" });
+        await ctx.reply(`✅ User <b>${email}</b> akan EXPIRED dalam 2 menit.\nSilakan pantau Auto-Kick.`, { parse_mode: "HTML" });
     } catch (e: any) {
         await ctx.reply(`❌ Error DB: ${e.message}`);
     }
