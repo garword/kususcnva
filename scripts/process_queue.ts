@@ -715,11 +715,11 @@ async function runPuppeteerQueue() {
 
                             // Try Edit First
                             if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId, parseInt(lastMsgId), text);
+                                msgId = await editTelegramMessage(userId.toString(), parseInt(lastMsgId), text);
                             }
                             // Fallback to Send
                             if (!msgId) {
-                                msgId = await sendTelegram(userId, text);
+                                msgId = await sendTelegram(userId.toString(), text);
                             }
 
                         } else {
@@ -729,11 +729,11 @@ async function runPuppeteerQueue() {
 
                             // Try Edit First
                             if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId, parseInt(lastMsgId), text, { disable_web_page_preview: true });
+                                msgId = await editTelegramMessage(userId.toString(), parseInt(lastMsgId), text, { disable_web_page_preview: true });
                             }
                             // Fallback to Send
                             if (!msgId) {
-                                msgId = await sendTelegram(userId, text, { disable_web_page_preview: true });
+                                msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
                             }
                         }
 
