@@ -740,7 +740,7 @@ async function handleActivation(ctx: any, emailInput: string) {
 
                 if (success) {
                     return ctx.reply(
-                        `✅ <b>Perpanjangan Berhasil!</b>\n\n` +
+                        `✅ <b>Perpanjangan Berhasil! (v2)</b>\n\n` +
                         `Paket: <b>${pkgName}</b>\n` +
                         `Email: <code>${savedEmail}</code>\n` +
                         `Status: <b>Diperpanjang (+${extendDays} Hari)</b>\n` +
@@ -753,14 +753,14 @@ async function handleActivation(ctx: any, emailInput: string) {
                     if (pointsDeducted) {
                         await sql("UPDATE users SET referral_points = referral_points + ? WHERE id = ?", [requiredPoints, userId]);
                         return ctx.reply(
-                            `❌ <b>Perpanjangan Gagal!</b>\n\n` +
+                            `❌ <b>Perpanjangan Gagal! (v2)</b>\n\n` +
                             `Sistem gagal memperbarui data setelah 5x percobaan (Koneksi Database Timeout).\n` +
                             `✅ <b>${requiredPoints} Poin Anda telah dikembalikan.</b>\n\n` +
                             `Silakan coba lagi beberapa saat lagi.`,
                             { parse_mode: "HTML" }
                         );
                     } else {
-                        return ctx.reply("❌ <b>Gagal System!</b>\nSilakan hubungi Admin.", { parse_mode: "HTML" });
+                        return ctx.reply("❌ <b>Gagal System! (v2)</b>\nSilakan hubungi Admin.", { parse_mode: "HTML" });
                     }
                 }
             }
