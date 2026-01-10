@@ -32,16 +32,19 @@ export default {
         const loopCount = 6;
         const delayMs = 5000; // 5 detik
 
-        console.log(`⏰ Cron Triggered: Starting Burst Ping (${loopCount}x per min)...`);
+        // Helper: Format Jam WIB
+        const nowWIB = () => new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
+        console.log(`[${nowWIB()}] ⏰ Cron Triggered: Starting Burst Ping (${loopCount}x per min)...`);
 
         // Gunakan ctx.waitUntil agar worker tidak dimatikan paksa saat sleep
         ctx.waitUntil((async () => {
             for (let i = 1; i <= loopCount; i++) {
                 try {
                     const resp = await fetch(targetUrl);
-                    console.log(`   📡 Ping #${i}: Status ${resp.status}`);
+                    console.log(`[${nowWIB()}]    📡 Ping #${i}: Status ${resp.status}`);
                 } catch (e) {
-                    console.error(`   ❌ Ping #${i} Error: ${e.message}`);
+                    console.error(`[${nowWIB()}]    ❌ Ping #${i} Error: ${e.message}`);
                 }
 
                 // Delay 5 detik (kecuali running terakhir)
@@ -49,7 +52,7 @@ export default {
                     await new Promise(r => setTimeout(r, delayMs));
                 }
             }
-            console.log("✅ Burst Ping Finished.");
+            console.log(`[${nowWIB()}] ✅ Burst Ping Finished.`);
         })());
     }
 };
