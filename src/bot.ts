@@ -1128,9 +1128,29 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     const user = userRes.rows[0];
     const sub = subRes.rows[0]; // Ambil yang pertama jika ada (Single Active Sub rule)
 
-    const status = sub ? "✅ Premium Active" : "❌ Free / Inactive";
-    const plan = sub ? sub.plan_name : "-";
-    const expDate = sub ? new Date(sub.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : "-";
+    let status = "❌ Free / Inactive";
+    let plan = "-";
+    let expDate = "-";
+    let expDateObj = null;
+
+    if (sub) {
+        status = "✅ Premium Active";
+        expDateObj = new Date(sub.end_date as string);
+        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+
+        // Dynamic Plan Label based on Duration
+        const now = new Date();
+        const diffMs = expDateObj.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const diffMonths = (diffDays / 30).toFixed(1);
+
+        // If very long duration, show simpler month count
+        if (diffDays > 35) {
+            plan = `Premium (±${Math.round(diffDays / 30)} Bulan)`;
+        } else {
+            plan = sub.plan_name; // Fallback to DB name for short term
+        }
+    }
     const points = user.referral_points || 0;
     const refLink = `https://t.me/${ctx.me.username}?start=${user.referral_code}`;
     const role = isAdmin(userId) ? "👑 Admin" : "👤 Member";
