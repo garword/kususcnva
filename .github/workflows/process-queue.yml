@@ -33,6 +33,7 @@ jobs:
       
       - name: Run Queue Processor
         env:
+          TZ: 'Asia/Jakarta'
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
