@@ -709,8 +709,8 @@ async function handleActivation(ctx: any, emailInput: string) {
                         console.log(`🔄 Attempt ${attempts}: Updating sub ${activeSub.id} to ${newEndDateStr}`);
 
                         await sql(
-                            `UPDATE subscriptions SET end_date = ? WHERE id = ?`,
-                            [newEndDateStr, activeSub.id]
+                            `UPDATE subscriptions SET end_date = ?, product_id = ? WHERE id = ?`,
+                            [newEndDateStr, selectedProd, activeSub.id]
                         );
 
                         // Verify by Reading Back
