@@ -30,28 +30,35 @@ async function saveCookie() {
     const page = await browser.newPage();
     await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
 
-    // Tunggu input user di terminal
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on('data', async () => {
-        console.log("\n💾 Sedang menyimpan cookies...");
+    // Tunggu input user di terminal menggunakan readline (lebih aman)
+    const readline = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
 
-        try {
-            const cookies = await page.cookies();
-            const userAgent = await page.evaluate(() => navigator.userAgent);
+    await new Promise<void>(resolve => {
+        readline.question("\n⌨️  Tekan ENTER setelah Anda selesai Login...", async () => {
+            readline.close();
+            console.log("\n💾 Sedang menyimpan cookies...");
 
-            fs.writeFileSync('auth_cookies.json', JSON.stringify(cookies, null, 2));
-            fs.writeFileSync('auth_user_agent.txt', userAgent);
+            try {
+                const cookies = await page.cookies();
+                const userAgent = await page.evaluate(() => navigator.userAgent);
 
-            console.log("✅ SUKSES! Cookies tersimpan di 'auth_cookies.json'.");
-            console.log("✅ SUKSES! User-Agent tersimpan di 'auth_user_agent.txt'.");
-            console.log("Bot sekarang bisa login tanpa password dan menggunakan User-Agent yang sama.");
-        } catch (e) {
-            console.error("❌ Gagal simpan cookie:", e);
-        } finally {
-            await browser.close();
-            process.exit(0);
-        }
+                fs.writeFileSync('auth_cookies.json', JSON.stringify(cookies, null, 2));
+                fs.writeFileSync('auth_user_agent.txt', userAgent);
+
+                console.log("✅ SUKSES! Cookies tersimpan di 'auth_cookies.json'.");
+                console.log("✅ SUKSES! User-Agent tersimpan di 'auth_user_agent.txt'.");
+                console.log("Bot sekarang bisa login tanpa password dan menggunakan User-Agent yang sama.");
+            } catch (e) {
+                console.error("❌ Gagal simpan cookie:", e);
+            } finally {
+                await browser.close();
+                process.exit(0);
+            }
+            resolve();
+        });
     });
 }
 

@@ -152,24 +152,48 @@ async function revokeStaleInvites() {
         const staleTargets = await page.evaluate((dbEmails: string[]) => {
             const targets: string[] = [];
             const rows = Array.from(document.querySelectorAll('tbody tr'));
+            const safeDB = dbEmails.map(e => e.toLowerCase().trim());
 
             console.log(`Debug: Found ${rows.length} rows in table.`);
 
             rows.forEach((row, idx) => {
+                const textContent = row.innerText.toLowerCase();
                 const tds = Array.from(row.querySelectorAll('td'));
-                if (tds.length < 2) return;
 
-                const nameText = tds[0].innerText.replace(/[\n\r]+/g, ' ').trim().toLowerCase();
-                const statusText = tds[1].innerText.replace(/[\n\r]+/g, ' ').trim().toLowerCase();
+                // Extract Email: Look for @ symbol in text or any column
+                let foundEmail = "";
 
-                console.log(`Row ${idx}: Name="${nameText}" | Status="${statusText}"`);
+                // Strategy 1: Check if Name Column looks like an email
+                if (tds.length > 0 && tds[0].innerText.includes("@")) {
+                    foundEmail = tds[0].innerText.trim().toLowerCase();
+                }
 
-                const isInvited = statusText.includes('invited');
-                const isMatch = dbEmails.some(email => nameText.includes(email)); // Use includes for partial match safety
+                // Strategy 2: Regex search in entire row
+                if (!foundEmail) {
+                    const match = textContent.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+                    if (match) foundEmail = match[0];
+                }
 
-                if (isInvited && isMatch) {
-                    console.log(`   -> MATCH FOUND: ${nameText}`);
-                    targets.push(nameText);
+                // Clean extracted email (remove newlines/spaces)
+                foundEmail = foundEmail.replace(/[\n\r]+/g, '').trim();
+
+                const isInvited = textContent.includes('invited') || textContent.includes('pending');
+
+                console.log(`Row ${idx}: RAW="${textContent.substring(0, 50)}..." | ExtractedEmail="${foundEmail}" | IsInvited=${isInvited}`);
+
+                // MATCH LOGIC:
+                // If it IS Invited AND the Email matches one in our STALE DB LIST
+                if (isInvited && foundEmail) {
+                    // Check partial match against DB whitelist
+                    const isStale = safeDB.some(dbEmail => foundEmail.includes(dbEmail));
+
+                    if (isStale) {
+                        // We return the "Name" (Column 1) to identify the row for clicking later
+                        // Because the UI click logic usually targets the Name.
+                        const nameForClick = tds[0].innerText.trim();
+                        console.log(`   -> MATCH FOUND: ${foundEmail} (Click Target: ${nameForClick})`);
+                        targets.push(nameForClick);
+                    }
                 }
             });
             return targets;
