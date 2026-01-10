@@ -36,7 +36,24 @@ function getChromePath() {
     return null;
 }
 
-// Helper to notify specific user (e.g., successful invite)
+// Helper to edit existing Telegram message
+async function editTelegramMessage(chatId: string | number, messageId: number, text: string, options: any = {}) {
+    if (!BOT_TOKEN) return null;
+    try {
+        const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+            chat_id: chatId,
+            message_id: messageId,
+            text: text,
+            parse_mode: 'HTML',
+            ...options
+        });
+        return response.data.result.message_id;
+    } catch (e: any) {
+        console.error("Failed to edit Telegram message:", e.message);
+        return null;
+    }
+}
+
 async function sendTelegram(chatId: string | number, message: string, options: any = {}) {
     if (!BOT_TOKEN) return null;
     try {
@@ -52,6 +69,7 @@ async function sendTelegram(chatId: string | number, message: string, options: a
         return null;
     }
 }
+
 
 async function deleteTelegramMessage(chatId: string | number, messageId: number) {
     if (!BOT_TOKEN) return;
@@ -689,16 +707,34 @@ async function runPuppeteerQueue() {
 
                     if (userId > 0) {
                         let msgId = null;
+                        const lastMsgId = user.last_message_id; // Get stored ID
+
                         if (result.message.startsWith("http")) {
                             // SEND LINK TO USER
-                            msgId = await sendTelegram(userId, `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`);
+                            const text = `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`;
+
+                            // Try Edit First
+                            if (lastMsgId) {
+                                msgId = await editTelegramMessage(userId, parseInt(lastMsgId), text);
+                            }
+                            // Fallback to Send
+                            if (!msgId) {
+                                msgId = await sendTelegram(userId, text);
+                            }
+
                         } else {
                             // SEND CODE TO USER (Monospaced & Professional)
                             const code = result.message;
-                            msgId = await sendTelegram(userId,
-                                `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\nUntuk mengaktifkan Pro, ikuti langkah berikut:\n\n<b>1. Buka Halaman Join</b>\nKlik link ini: <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n\n<b>2. Masukkan Kode Identifikasi</b>\nSalin dan tempel kode ini:\n\n<code>${code}</code>\n<i>(Tekan kode untuk menyalin otomatis)</i>\n\n<b>3. Selesai!</b>\nKlik <b>"Join"</b> dan nikmati fitur Canva Pro. ✨\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`,
-                                { disable_web_page_preview: true }
-                            );
+                            const text = `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\nUntuk mengaktifkan Pro, ikuti langkah berikut:\n\n<b>1. Buka Halaman Join</b>\nKlik link ini: <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n\n<b>2. Masukkan Kode Identifikasi</b>\nSalin dan tempel kode ini:\n\n<code>${code}</code>\n<i>(Tekan kode untuk menyalin otomatis)</i>\n\n<b>3. Selesai!</b>\nKlik <b>"Join"</b> dan nikmati fitur Canva Pro. ✨\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`;
+
+                            // Try Edit First
+                            if (lastMsgId) {
+                                msgId = await editTelegramMessage(userId, parseInt(lastMsgId), text, { disable_web_page_preview: true });
+                            }
+                            // Fallback to Send
+                            if (!msgId) {
+                                msgId = await sendTelegram(userId, text, { disable_web_page_preview: true });
+                            }
                         }
 
                         // UPDATE STATUS ONLY IF MESSAGE SENT SUCCESSFULLY

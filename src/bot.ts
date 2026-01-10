@@ -687,7 +687,7 @@ bot.command("aktivasi", async (ctx) => {
         // 4. Trigger Action
         triggerGithubAction();
 
-        await ctx.reply(
+        const sentMsg = await ctx.reply(
             `✅ <b>Permintaan Diterima!</b>\n\n` +
             `Email: <code>${email}</code>\n` +
             `Paket: <b>${selectedProd === 3 ? "6 Bulan Premium" : "1 Bulan Free"}</b>\n` +
@@ -695,6 +695,9 @@ bot.command("aktivasi", async (ctx) => {
             `Bot akan mengirim notifikasi saat invite berhasil dikirim (est. 1-5 menit).`,
             { parse_mode: "HTML" }
         );
+
+        // 5. Save Message ID for editing later
+        await sql("UPDATE users SET last_message_id = ? WHERE id = ?", [sentMsg.message_id, userId]);
 
     } catch (error: any) {
         await ctx.reply(`❌ Error System: ${error.message}`);
