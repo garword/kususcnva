@@ -108,11 +108,31 @@ async function revokeStaleInvites() {
             }
         } catch (e) { }
 
-        // 3. Restore Session
-        if (fs.existsSync('auth_cookies.json')) {
-            const cookies = JSON.parse(fs.readFileSync('auth_cookies.json', 'utf-8'));
+        // 3. Restore Session (Priority: DB -> File)
+        let cookies: any[] = [];
+        try {
+            const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+            if (cookieRes.rows.length > 0) {
+                const cookieStr = cookieRes.rows[0].value as string;
+                if (cookieStr.trim().startsWith("[") || cookieStr.trim().startsWith("{")) {
+                    cookies = JSON.parse(cookieStr);
+                    // Handle { cookies: [...] } format
+                    if (!Array.isArray(cookies) && cookies.cookies) cookies = cookies.cookies;
+                }
+                console.log("   ✅ Cookie loaded from DB.");
+            }
+        } catch (e) { console.error("   ⚠️ DB Cookie Error:", e); }
+
+        if (cookies.length === 0 && fs.existsSync('auth_cookies.json')) {
+            cookies = JSON.parse(fs.readFileSync('auth_cookies.json', 'utf-8'));
+            console.log("   ✅ Cookie loaded from Local File.");
+        }
+
+        if (cookies.length > 0) {
             await page.setCookie(...cookies);
-            console.log("🍪 Session restored.");
+            console.log("   🍪 Session restored.");
+        } else {
+            console.warn("   ⚠️ No cookies found! Login might fail.");
         }
 
         // 4. Navigate to People
