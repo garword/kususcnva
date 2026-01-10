@@ -140,7 +140,8 @@ bot.hears("📖 Panduan", async (ctx) => {
             `• <b>/set_cookie [json]</b> - Set cookie Canva baru.\n` +
             `• <b>/test_invite [email]</b> - Tes invite manual.\n` +
             `• <b>/broadcast [pesan]</b> - Kirim pesan ke semua user.\n` +
-            `• <b>/delete_email [email]</b> - Hapus data email user.\n` +
+            `• <b>/delete_user [email/id]</b> - Hapus user permanent.\n` +
+            `• <b>/reset_email [email]</b> - Soft delete (Hapus langganan saja).\n` +
             `• <b>/forceexpire [email]</b> - Buat user expired (H-1).\n` +
             `• <b>/set_channels</b> - Atur channel force subscribe.\n` +
             `• <b>/channels</b> - Cek list channel aktif.\n`;
@@ -822,6 +823,14 @@ bot.command("delete_user", async (ctx) => {
     } catch (error: any) {
         await ctx.reply(`❌ Error: ${error.message}`);
     }
+});
+
+// Alias: /delete_email (Legacy Support)
+bot.command("delete_email", async (ctx) => {
+    // Redirect to /delete_user logic manually or just instruct
+    // Re-using logic is complex due to context matching, better to just warn or copy-paste core logic.
+    // Simplest: Just tell them to use new command
+    await ctx.reply("⚠️ Command ini sudah diganti.\nSilakan gunakan: <code>/delete_user [email/id]</code>", { parse_mode: "HTML" });
 });
 
 // ============================================================
