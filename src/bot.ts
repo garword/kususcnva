@@ -138,6 +138,7 @@ bot.hears("📖 Panduan", async (ctx) => {
             `• <b>/admin</b> - Buka panel admin super.\n` +
             `• <b>/data</b> - Export laporan user (.txt).\n` +
             `• <b>/set_cookie [json]</b> - Set cookie Canva baru.\n` +
+            `• <b>/setua [ua]</b> - Set User-Agent browser.\n` +
             `• <b>/cekcookie</b> - Cek isi cookie aktif di DB.\n` +
             `• <b>/test_invite [email]</b> - Tes invite manual.\n` +
             `• <b>/broadcast [pesan]</b> - Kirim pesan ke semua user.\n` +
@@ -334,12 +335,13 @@ bot.callbackQuery("check_join", async (ctx) => {
 
 // Fungsi handler core untuk memproses cookie (dari teks atau file)
 async function handleCookieProcess(ctx: MyContext, cookieRaw: string) {
-    let cookie = cookieRaw;
+    let cookieForValidation = cookieRaw;
+    let cookieForDB = cookieRaw; // Default: Save as is
 
-    // Deteksi Format JSON (dari Extension)
-    if (cookie.trim().startsWith("[") || cookie.trim().startsWith("{")) {
+    // Deteksi Format JSON (dari Extension atau Content)
+    if (cookieRaw.trim().startsWith("[") || cookieRaw.trim().startsWith("{")) {
         try {
-            const parsed = JSON.parse(cookie);
+            const parsed = JSON.parse(cookieRaw);
             let cookieList: any[] = [];
 
             if (Array.isArray(parsed)) {
@@ -349,8 +351,12 @@ async function handleCookieProcess(ctx: MyContext, cookieRaw: string) {
             }
 
             if (cookieList.length > 0) {
-                // Convert to header format
-                cookie = cookieList.map((c: any) => `${c.name}=${c.value}`).join("; ");
+                // 1. Keep JSON for DB (High Fidelity for Puppeteer)
+                // Remove unnecessary formatting to save space if needed, but keeping original is safer.
+                cookieForDB = JSON.stringify(cookieList);
+
+                // 2. Convert to header format for Axios Validation (getAccountInfo)
+                cookieForValidation = cookieList.map((c: any) => `${c.name}=${c.value}`).join("; ");
             }
         } catch (e) {
             return ctx.reply("❌ <b>Format JSON Salah!</b>\nJSON tidak valid.", { parse_mode: "HTML" });
@@ -360,12 +366,14 @@ async function handleCookieProcess(ctx: MyContext, cookieRaw: string) {
     await ctx.reply("⏳ Memvalidasi cookie & mengambil info akun...", { parse_mode: "HTML" });
 
     try {
-        const info = await getAccountInfo(cookie);
+        // Validate using Raw String (Axios)
+        const info = await getAccountInfo(cookieForValidation);
 
+        // Save to DB (JSON if available, or Raw String)
         await sql(
             `INSERT INTO settings (key, value) VALUES ('canva_cookie', ?) 
          ON CONFLICT(key) DO UPDATE SET value = ?`,
-            [cookie, cookie]
+            [cookieForDB, cookieForDB]
         );
 
         if (info.defaultTeamId) {
@@ -1031,11 +1039,45 @@ bot.callbackQuery("adm_cookie", async (ctx) => {
     await ctx.reply(
         `🍪 <b>Status Cookie:</b> ${val}\n\n` +
         `Menu Manajemen Cookie:\n` +
-        `1. <b>Set Baru:</b> Kirim file .json dengan caption <code>/set_cookie</code>\n` +
-        `2. <b>Cek Isi:</b> Tekan tombol di bawah atau ketik <code>/cekcookie</code>`,
+        `1. <b>Set Cookie:</b> Kirim file .json dengan caption <code>/set_cookie</code>\n` +
+        `2. <b>Set User-Agent:</b> Reply pesan teks dengan command <code>/setua</code>\n` +
+        `3. <b>Cek Isi:</b> Tekan tombol di bawah atau ketik <code>/cekcookie</code>`,
         { parse_mode: "HTML", reply_markup: cookieKeyboard }
     );
     await ctx.answerCallbackQuery();
+});
+
+// Command: Set User-Agent
+bot.command("setua", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    let ua = ctx.match as string;
+
+    // Support reply to text
+    if (!ua && ctx.msg.reply_to_message && "text" in ctx.msg.reply_to_message) {
+        ua = ctx.msg.reply_to_message.text || "";
+    }
+
+    if (!ua) {
+        return ctx.reply(
+            `⚠️ <b>Format Salah!</b>\n\n` +
+            `Cara set User-Agent:\n` +
+            `1. <b>Reply</b> pesan teks UA dengan command <code>/setua</code>\n` +
+            `2. Atau: <code>/setua Mozilla/5.0...</code>`,
+            { parse_mode: "HTML" }
+        );
+    }
+
+    try {
+        await sql(
+            `INSERT INTO settings (key, value) VALUES ('canva_user_agent', ?) 
+             ON CONFLICT(key) DO UPDATE SET value = ?`,
+            [ua, ua]
+        );
+        await ctx.reply(`✅ <b>User-Agent Berhasil Disimpan!</b>\n\nGitHub Actions sekarang akan menggunakan UA ini untuk penyamaran.`, { parse_mode: "HTML" });
+    } catch (e: any) {
+        await ctx.reply(`❌ Gagal menyimpan UA: ${e.message}`);
+    }
 });
 
 bot.callbackQuery("adm_view_cookie", async (ctx) => {

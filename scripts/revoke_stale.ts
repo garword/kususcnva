@@ -99,6 +99,15 @@ async function revokeStaleInvites() {
     try {
         const page = await browser.newPage();
 
+        // SET USER AGENT FROM DB
+        try {
+            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+            if (uaRes.rows.length > 0) {
+                await page.setUserAgent(uaRes.rows[0].value as string);
+                console.log("   ✅ User-Agent set from DB!");
+            }
+        } catch (e) { }
+
         // 3. Restore Session
         if (fs.existsSync('auth_cookies.json')) {
             const cookies = JSON.parse(fs.readFileSync('auth_cookies.json', 'utf-8'));

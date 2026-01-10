@@ -281,6 +281,21 @@ async function runPuppeteerQueue() {
             await randomDelay(500, 1000);
         };
 
+        // SET USER AGENT FROM DB
+        try {
+            // console.log("🕵️ Fetching User-Agent from DB..."); 
+            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+            if (uaRes.rows.length > 0) {
+                const dbUA = uaRes.rows[0].value as string;
+                await page.setUserAgent(dbUA);
+                console.log("   ✅ User-Agent set from DB!");
+            } else {
+                console.log("   ℹ️ No custom User-Agent in DB, using default.");
+            }
+        } catch (e: any) {
+            console.log("   ⚠️ Failed to set User-Agent:", e.message);
+        }
+
         // AUTHENTICATION STRATEGY: COOKIE PRIORITY -> EMAIL/PASSWORD FALLBACK
         const cookieFile = 'auth_cookies.json';
         let isLoggedIn = false;
