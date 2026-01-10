@@ -793,6 +793,24 @@ async function runPuppeteerQueue() {
                 } else {
                     console.log(`❌ Failed: ${result.message}`);
 
+                    // NOTIFY USER OF FAILURE (Overwrite "Permintaan Diterima")
+                    if (userId > 0) {
+                        const lastMsgId = user.last_message_id;
+                        const failText = `❌ <b>Gagal Mengirim Invite!</b>\n\nAlasan: ${result.message}\n\n<i>Silakan coba lagi nanti atau hubungi Admin jika error berlanjut.</i>`;
+
+                        let sent = false;
+                        if (lastMsgId) {
+                            // Try Edit
+                            const res = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), failText);
+                            if (res) sent = true;
+                        }
+
+                        if (!sent) {
+                            // Fallback Send
+                            await sendTelegram(userId.toString(), failText);
+                        }
+                    }
+
                     // Log diagnostic info if available
                     if ((result as any).debug) {
                         const debug = (result as any).debug;
