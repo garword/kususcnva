@@ -1,124 +1,79 @@
-# Fitur & Logika Bot Canva Premium (V2.0)
+# Fitur & Logika Bot Canva Premium (V2.2 - Latest)
 
-Dokumen ini menjelaskan fungsionalitas teknis terbaru dari bot, termasuk sistem login prioritas email dan logika otomatisasi cerdas.
+Dokumen ini merangkum seluruh fitur teknis, logika bisnis, dan mekanisme otomatisasi yang ada di dalam Bot Canva.
+
+---
 
 ## 👥 Fitur User (Member)
 
-### 1. Pendaftaran & Profil
-- **Start Bot**: User mengetik `/start`.
-  - **Sistem Register**: Deteksi user Baru/Lama, Auto-Generate Database ID.
-- **Profil Saya**: Menampilkan status langganan, saldo Poin Referral, dan link referral unik.
+### 1. Pendaftaran & Autentikasi
+*   **Auto-Register**: Saat user mengetik `/start`, bot otomatis mendaftarkan ID Telegram mereka ke database.
+*   **Force Subscribe**:
+    *   **Gatekeeper**: User wajib join channel sponsor sebelum mengakses menu utama.
+    *   **Auto-Check**: Bot memvalidasi status join di setiap interaksi penting (Aktivasi, Klaim, Cek Profil).
 
-### 2. Akses Bot (Force Subscribe)
-- **Gatekeeper**: User wajib join channel sponsor sebelum bisa akses menu utama.
-- **Auto-Check**: Bot otomatis memvalidasi status membership user setiap kali ada interaksi.
+### 2. Manajemen Paket & Poin
+*   **Sistem Poin Referral**:
+    *   User mendapatkan poin dengan mengundang teman (Link unik di Profil).
+    *   Poin digunakan untuk membeli/memperpanjang paket Premium.
+    *   **Anti-Farming**: Poin hanya masuk jika invitean adalah user *baru*.
+*   **Pilihan Paket (Strict Selection)**:
+    *   **1 Bulan (Trial)**: Gratis, 1x klaim per user.
+    *   **6 Bulan (Premium)**: Bayar pakai Poin (6 Poin).
+    *   **12 Bulan (Premium)**: Bayar pakai Poin (12 Poin).
+    *   **Aturan Ketat**: User **WAJIB** memilih paket di "Menu Paket" sebelum melakukan aktivasi (`/aktivasi`). Pilihan akan **otomatis ter-reset** setelah sukses agar tidak terpakai ulang secara tidak sengaja.
 
-### 3. Sistem Pembayaran & Referral
-- **Paket 1 Bulan (Gratis/Trial)**: 1 User = 1x Klaim.
-- **Paket 6 Bulan (Premium)**: Sistem Pay-as-you-go menggunakan **Poin Referral** (6 Poin per invite).
-- **Anti-Farming**: Poin referral hanya masuk jika user *benar-benar baru* di database.
+### 3. Aktivasi & Perpanjangan (Logic V2)
+*   **Command**: `/aktivasi [email]`
+*   **Logika Smart Extension**:
+    *   **Deteksi Otomatis**: Jika email sama dengan yang terdaftar, bot menganggap ini perpanjangan (Extension).
+    *   **Product ID Update**: Mengupdate jenis paket di database (misal upgrade dari Free ke Premium).
+    *   **Kalkulasi Durasi Real-time**: Menambahkan hari dari tanggal expired terakhir.
+    *   **Batas Maksimal (Cap)**: Mencegah penumpukan durasi melebihi **12 Bulan (370 Hari)** dari hari ini. Jika hasil perpanjangan tembus 1 tahun, request ditolak.
+*   **Logika User Baru**:
+    *   Jika email baru dan belum punya langganan, masuk antrian invite.
 
-### 4. Aktivasi (Invite Canva)
-- **Command**: `/aktivasi [email]`
-- **Proses**: Verifikasi eligibility -> Masuk Antrian Database -> Eksekusi via GitHub Actions.
-
-### 5. Command User
-- **Start/Restart**: `/start`
-- **Aktivasi**: `/aktivasi [email]`
-- **Cek Slot**: `/check_slot` (atau via tombol)
-
-### 👮 Command Admin
-- **Panel Admin**: `/admin` (Tersedia tombol "📂 Export Data")
-- **Data Report**: `/data` (Export txt data user & langganan)
-- **Set Cookie**: `/set_cookie` (Upload file JSON / Reply text. Update otomatis ke GitHub Action)
-- **Broadcast**: `/broadcast [pesan]`
-- **Hapus User**: `/delete_user [email/id]` (Hard Delete dari DB)
-- **Force Expire**: `/forceexpire [email]`
-- **Set Channel**: `/set_channels`
-
----
-
-## 🤖 Sistem Otomatisasi (Cerdas)
-
-Sistem otomatisasi kini menggunakan kombinasi strategi untuk keandalan maksimal.
-
-### 1. Smart Authentication (Login Hybrid)
-Bot memiliki 3 lapisan strategi login:
-1.  **Prioritas 1: Email & Password**  
-    Bot login layaknya manusia menggunakan kredensial yang ada di Environment Variable (`CANVA_EMAIL`, `CANVA_PASSWORD`). Ini mengatasi isu cookie expired.
-2.  **Prioritas 2: Cookie Session (Fallback)**  
-    Jika login gagal (misal kena Captcha), bot otomatis switch menggunakan **Cookie** yang tersimpan di Database.
-3.  **Visual Verification**: Setiap langkah login difoto (screenshot) dan dikirim ke log admin.
-
-### 2. Smart Invite (Navigasi Akurat)
-- **Navigasi**: Langsung menuju URL `/settings/people`.
-- **Deteksi UI**:
-  - Menggunakan **Aria Label** (`Enter email for person 1`) untuk mencari kolom input yang tepat.
-  - Menangani **Popup** invite dengan menunggu animasi selesai.
-  - Klik tombol "Send invitations" secara presisi.
-
-### 3. Smart Kick (Penghapusan User Expired)
-Logika penghapusan user yang sudah habis masa aktifnya:
-1.  **Search**: Mencari email user di list anggota.
-2.  **Select**: Mencentang **Checkbox** user target.
-3.  **Action**: Klik tombol **Remove users** (`aria-label="Remove users"`).
-4.  **Confirm**: Klik tombol konfirmasi merah ("Remove from team") di popup.
-
-### 4. Auto-Revoke Stale Invites (Pembersih Invite Lama)
-- **Problem**: Invite yang "Pending" lebih dari 1 jam mengambil kuota tim.
-- **Solution**: Script otomatis (`scripts/revoke_stale.ts`) mendeteksi invite yang statusnya masih "Invited" dan usianya > 1 jam, lalu mencabut invite tersebut.
-
-### 5. Team Quota Monitoring & Slot Prediction
-- **Real-time Sync**: Script (`scripts/sync_member_count.ts`) melakukan scan full-page untuk mendapatkan jumlah member yang akurat (Active + Pending).
-- **Slot Limit**: Jika anggota >= 500, bot **MEMBLOKIR** permintaan `/aktivasi` baru.
-- **Prediksi Waktu**: Jika penuh, bot memberi info "Slot Berikutnya Tersedia: [Tanggal Expired User Terdekat]".
-
-### 6. Logic Berlangganan Cerdas (Smart Subscription)
-- **Paket Free (1 Bulan)**:
-    - **Strict Limit**: Hanya boleh punya 1 akun aktif. User harus menunggu expired baru bisa klaim lagi.
-    - **Tujuan**: Mencegah abuse akun gratisan.
-- **Paket Premium (6 Bulan)**:
-    - **Stacking (Tumpuk)**: User bisa beli paket baru meski masih aktif.
-    - **Instant Extension**: Jika user aktif membeli lagi, bot otomatis memperpanjang masa aktif (+180 hari) tanpa perlu invite ulang.
-    - **Max Cap**: Batas maksimal penumpukan adalah **400 Hari** (mencegah penimbunan berlebihan).
-
-### 7. "Via Code" Fallback (Anti-RRS)
-- **Exclusive Strategy**: Bot diprioritaskan untuk menggunakan metode "Via Code" (Generate Link) daripada kirim email, untuk menghindari blokir "Security Reason" dari Canva.
-
-### 8. Privilese Admin
-- **Unlimited Points**: Admin tidak dikenakan biaya poin saat melakukan aktivasi paket Premium (Free of Charge).
-- **Bypass Limit**: Admin bisa melakukan generate invite tanpa perlu memikirkan saldo poin.
+### 4. Tampilan Profil & UI Dinamis
+*   **Dynamic Profile**:
+    *   Di menu `👤 Profil Saya`, label paket berubah sesuai sisa durasi.
+    *   Contoh: Jika sisa 18 bulan, tertulis **"Premium (±18 Bulan)"**.
+*   **Dynamic Account List**:
+    *   Di menu `📋 Daftar Akun`, jika sisa durasi > 35 hari, label paket berubah menjadi **"User Premium"**.
+*   **Loading State**: Indikator "⏳ Memproses..." saat loading data berat atau koneksi database.
 
 ---
 
-## 👨‍💻 Fitur Admin & Tools
+## 👮 Fitur Admin (Super Panel)
 
-### 1. Inspector Tool (New)
-- **Script**: `npx ts-node scripts/inspect_selector.ts`
-- **Fungsi**: Membuka browser visual untuk inspeksi elemen web secara langsung.
+### 1. Panel Kontrol Visual
+*   Akses via command `/admin`.
+*   **Menu Button**: Navigasi cepat untuk Export Data, Cek Cookie, Broadcast, dll.
 
-### 2. Cek Slot (Member Feature)
-- Tombol `📊 Cek Slot` di menu utama user untuk memeriksa ketersediaan slot secara real-time.
+### 2. Manajemen User
+*   **Lihat Daftar Akun**: Admin bisa melihat detail semua akun user tertentu.
+*   **Soft Reset (`/reset_email`)**: Menghapus langganan & melepas email user, tapi **MENJAGA** saldo poin & history. Cocok untuk ganti email.
+*   **Hard Delete (`/delete_user`)**: Menghapus user 100% dari database.
+*   **Force Expire**: Memaksa akun user jadi expired (untuk test auto-kick).
 
-### 3. Manajemen Force Subscribe & Broadcast
-- Full control untuk mengatur channel wajib join dan broadcast pesan masal.
-
-### 4. Admin Log (Visual)
-- Semua aktivitas kritis disertai Screenshot yang dikirim ke channel log.
-
-### 5. Manajemen User (Advanced)
-- **/delete_user [email/id]** - **Hard Delete**: Menghapus user secara permanen dari database (termasuk history, poin, dan data referral).
-- **/reset_email [email]** - **Soft Reset**: Hanya menghapus status langganan aktif dan mereset email menjadi null, tetapi **MENJAGA** akumulasi Poin Referral dan History user. Berguna jika user ingin ganti email tapi tidak ingin kehilangan level poin.
-
----
-
-## 🛠️ Struktur Database (Update)
-
-Tabel `settings` kini menyimpan data dinamis penting:
-- `team_member_count`: Jumlah anggota tim saat ini.
-- `team_pending_count`: Jumlah invite yang masih pending.
-- `last_sync_at`: Terakhir kali bot melakukan sinkronisasi data tim.
-- `canva_cookie`: Cadangan sesi login.
+### 3. Manajemen Sistem
+*   **Export Data (`/data`)**: Mengirim file `.txt` berisi laporan seluruh user, paket, dan expired date.
+*   **Set Cookie & UA**: Update cookie Canva dan User-Agent langsung dari bot tanpa restart server.
+*   **Broadcast**: Kirim pesan ke seluruh user bot.
+*   **Team ID & Slots**: Monitoring slot tim Canva.
 
 ---
-*Dokumen ini diperbarui untuk versi bot v2.1 dengan fitur Slot Management & Stale Invite Cleaner.*
+
+## 🤖 Sistem Otomatisasi & Backend (V2)
+
+### 1. Database Resilience (Ketahanan)
+*   **Auto-Retry**: Bot otomatis mencoba ulang (retry) query database hingga 3x jika terjadi `ConnectTimeoutError` atau gangguan koneksi ke server Turso (Jepang).
+*   **Auto-Refund**: Jika perpanjangan gagal total setelah retry, poin user otomatis dikembalikan (Refund).
+
+### 2. Smart Automation (Puppeteer)
+*   **Login Hybrid**: Prioritas Login Email/Password -> Fallback ke Cookie Session.
+*   **Smart Invite**: Navigasi DOM cerdas menggunakan `aria-label` untuk mengundang user.
+*   **Auto-Kick**: Script otomatis menghapus member yang expired dari Tim Canva.
+*   **Stale Invite Cleaner**: Otomatis mencabut invite yang "Pending" > 1 jam untuk menghemat slot.
+
+### 3. Serverless Compatibility
+*   Bot didesain untuk berjalan di **Vercel (Serverless)** menggunakan Webhook, namun tetap compatible dengan mode **Local Polling** untuk development.
