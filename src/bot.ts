@@ -904,9 +904,7 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     // I will add it for ADMIN ONLY based on "liat daftar akun yang aktif" phrasing which usually means monitoring.
 
     const keyboard = new InlineKeyboard();
-    if (isAdmin(userId)) {
-        keyboard.text("📋 Lihat Daftar Akun", "view_account_list");
-    }
+    keyboard.text("📋 Lihat Daftar Akun", "view_account_list");
 
     await ctx.reply(
         `👤 <b>Profil Pengguna</b>\n\n` +
@@ -997,10 +995,54 @@ bot.command("reset_email", async (ctx) => {
 
 // CALLBACK HANDLERS FOR ADMIN MENU
 
-bot.callbackQuery("adm_export_data", async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return;
-    await ctx.reply("📂 <b>Proses Export Data...</b>\nSilakan ketik <code>/data</code> untuk mendapatkan file.", { parse_mode: "HTML" });
-    await ctx.answerCallbackQuery();
+// View Account List Handler (Per User)
+bot.callbackQuery("view_account_list", async (ctx) => {
+    // 1. Loading Animation
+    await ctx.editMessageText("⏳ <b>Sedang memuat data akun...</b>", { parse_mode: "HTML" });
+
+    try {
+        const userId = ctx.from.id;
+
+        // 2. Fetch Data (Filtered by User ID)
+        // Join users and subscriptions to get email and expiry
+        const res = await sql(`
+            SELECT u.email, s.end_date, p.name as plan_name 
+            FROM subscriptions s
+            JOIN users u ON s.user_id = u.id
+            JOIN products p ON s.product_id = p.id
+            WHERE s.status = 'active' AND s.user_id = ?
+            ORDER BY s.end_date ASC
+        `, [userId]);
+
+        if (res.rows.length === 0) {
+            // Add back button even if empty
+            const backKeyboard = new InlineKeyboard().text("🔙 Kembali", "adm_back_profile");
+            // Note: adm_back_profile logic needs to exist or we use deleteMessage? 
+            // Better to just let them close or re-open profile.
+            // User requested "professional", so maybe just text update is enough.
+            return ctx.editMessageText("📂 <b>Daftar Akun Saya</b>\n\nAnda belum memiliki akun aktif.", { parse_mode: "HTML" });
+        }
+
+        // 3. Format Data
+        const header = `📋 <b>DAFTAR AKUN SAYA (${res.rows.length})</b>\n\n`;
+        const list = res.rows.map((row: any, i: number) => {
+            const num = i + 1;
+            const email = row.email || "No Email";
+            const plan = row.plan_name;
+            // Parse Date
+            const expStr = row.end_date ? TimeUtils.format(new Date(row.end_date)) : "-";
+            return `<b>${num}. ${email}</b>\n   📦 ${plan}\n   ⏳ Exp: ${expStr}`;
+        }).join("\n\n");
+
+        const footer = `\n\n<i>Data dimuat pada: ${TimeUtils.format()}</i>`;
+        const fullMsg = header + list + footer;
+
+        await ctx.editMessageText(fullMsg, { parse_mode: "HTML" });
+
+    } catch (e: any) {
+        console.error(e);
+        await ctx.editMessageText(`❌ <b>Gagal Memuat Data</b>\n${e.message}`, { parse_mode: "HTML" });
+    }
 });
 
 // Delete Submenu Handler
