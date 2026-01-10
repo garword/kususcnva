@@ -909,7 +909,7 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     const adminKeyboard = new InlineKeyboard()
         .text("📂 Export Data", "adm_export_data").text("⚙️ Cek Team ID", "adm_team_id").row()
         .text("🍪 Status Cookie", "adm_cookie").text("📢 Broadcast", "adm_help_bc").row()
-        .text("🗑️ Hapus User", "adm_help_del").text("💀 Force Expire", "adm_help_exp").row()
+        .text("🗑️ Menu Hapus", "adm_menu_del").text("💀 Force Expire", "adm_help_exp").row()
         .text("📋 List Channel", "adm_list_ch").text("➕ Set Channel", "adm_set_ch").row()
         .text("🚀 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick");
 
@@ -925,18 +925,86 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     );
 });
 
+// Command: Soft Reset (Reset Email)
+bot.command("reset_email", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const input = ctx.match as string;
+    if (!input) return ctx.reply("⚠️ Format: <code>/reset_email [email]</code>", { parse_mode: "HTML" });
+
+    try {
+        // 1. Cari User ID
+        const userRes = await sql("SELECT id, first_name FROM users WHERE email = ?", [input]);
+        if (userRes.rows.length === 0) return ctx.reply("❌ Email tidak ditemukan di database.");
+
+        const userId = userRes.rows[0].id;
+        const userName = userRes.rows[0].first_name;
+
+        // 2. Soft Delete Logic
+        // - Hapus Subscription
+        await sql("DELETE FROM subscriptions WHERE user_id = ?", [userId]);
+        // - Reset Email di table User (jadi NULL) -> agar bisa daftar lagi fresh
+        await sql("UPDATE users SET email = NULL WHERE id = ?", [userId]);
+
+        await ctx.reply(
+            `♻️ <b>Soft Reset Berhasil!</b>\n\n` +
+            `👤 Nama: ${userName}\n` +
+            `📧 Email: ${input} (Direset)\n\n` +
+            `✅ Langganan dihapus.\n` +
+            `✅ Data Poin & History tetap AMAN.\n` +
+            `User bisa mendaftar ulang dengan email baru/sama.`,
+            { parse_mode: "HTML" }
+        );
+
+    } catch (e: any) {
+        console.error(e);
+        await ctx.reply(`❌ Gagal reset: ${e.message}`);
+    }
+});
+
 // CALLBACK HANDLERS FOR ADMIN MENU
 
 bot.callbackQuery("adm_export_data", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
-    // Redirect to /data logic by triggering the command manually or informing user
-    // Since /data is a command, we can just reply with text instruction or re-run the logic.
-    // For simplicity, let's just guide them or re-implement logic? 
-    // Best: Guide them to type /data because file sending logic is heavy for callback (might timeout).
-    // Actually, we can just call the /data handler logic if we extract it, but let's just use text for now to be safe or simple.
-    // WAIT: User asked for "Menu Button", so it should work. Let's just instruct them or try to trigger command.
-    // Re-implementation is cleanest.
     await ctx.reply("📂 <b>Proses Export Data...</b>\nSilakan ketik <code>/data</code> untuk mendapatkan file.", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+// Delete Submenu Handler
+bot.callbackQuery("adm_menu_del", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+
+    const delKeyboard = new InlineKeyboard()
+        .text("♻️ Soft Reset (Jaga Poin)", "adm_help_reset_email").row()
+        .text("🔥 Hard Delete (Lenyap)", "adm_help_del").row()
+        .text("🔙 Kembali", "adm_back_main");
+
+    await ctx.editMessageText(
+        `🗑️ <b>Menu Penghapusan User</b>\n\n` +
+        `Pilih jenis penghapusan:\n` +
+        `1. <b>Soft Reset</b>: Hanya hapus langganan & lepas email. Poin user aman.\n` +
+        `2. <b>Hard Delete</b>: Hapus SEMUA data user permanen.\n\n` +
+        `Silakan pilih panduan di bawah:`,
+        { parse_mode: "HTML", reply_markup: delKeyboard }
+    );
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_back_main", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.deleteMessage();
+    await ctx.reply("🔄 Silakan ketik <code>/admin</code> untuk kembali ke menu utama.", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("adm_help_reset_email", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply(
+        `♻️ <b>Soft Reset Email:</b>\n\n` +
+        `Gunakan ini jika user ingin ganti email atau re-subscribe tanpa hilang poin.\n` +
+        `Command: <code>/reset_email user@gmail.com</code>`,
+        { parse_mode: "HTML" }
+    );
     await ctx.answerCallbackQuery();
 });
 

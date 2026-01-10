@@ -106,6 +106,10 @@ Logika penghapusan user yang sudah habis masa aktifnya:
 ### 4. Admin Log (Visual)
 - Semua aktivitas kritis disertai Screenshot yang dikirim ke channel log.
 
+### 5. Manajemen User (Advanced)
+- **/delete_user [email/id]** - **Hard Delete**: Menghapus user secara permanen dari database (termasuk history, poin, dan data referral).
+- **/reset_email [email]** - **Soft Reset**: Hanya menghapus status langganan aktif dan mereset email menjadi null, tetapi **MENJAGA** akumulasi Poin Referral dan History user. Berguna jika user ingin ganti email tapi tidak ingin kehilangan level poin.
+
 ---
 
 ## 🛠️ Struktur Database (Update)
