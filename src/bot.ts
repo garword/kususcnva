@@ -1169,9 +1169,6 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     // The previous code `SELECT * FROM users` implies single user.
     // Given the context of "bot store" / "admin panel", this likely refers to the ADMIN seeing ALL active accounts.
     // BUT the button is in "Profil Saya".
-    // If I am a member, why would I see "List Akun"? Maybe my OWN accounts?
-    // "daftar /list akun yang aktif" -> sounds like "List All Active Accounts".
-    // I will add it for ADMIN ONLY based on "liat daftar akun yang aktif" phrasing which usually means monitoring.
 
     const keyboard = new InlineKeyboard();
     keyboard.text("📋 Lihat Daftar Akun", "view_account_list");
@@ -1196,6 +1193,31 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     );
 });
 
+// 4. Panduan (Help)
+bot.hears("📖 Panduan", async (ctx) => {
+    await ctx.reply(
+        `📚 <b>Panduan Penggunaan Bot</b>\n\n` +
+        `<b>1️⃣ Cara Mendapatkan Akun:</b>\n` +
+        `• Klik tombol <b>🎁 Menu Paket</b> di menu utama.\n` +
+        `• Pilih durasi (1 Bulan Free / 6 Bulan Premium).\n` +
+        `• Setelah pilih, ketik: <code>/aktivasi emailmu@gmail.com</code>\n` +
+        `• Tunggu bot memproses invite (1-5 menit).\n\n` +
+
+        `<b>2️⃣ Cara Perpanjang (Extension):</b>\n` +
+        `• Pastikan punya <b>Poin Referral</b> cukup.\n` +
+        `• Ulangi langkah (Pilih Paket -> Aktivasi).\n` +
+        `• Bot otomatis mendeteksi akun lama & menambah durasi.\n\n` +
+
+        `<b>3️⃣ Menu & Command Penting:</b>\n` +
+        `• <b>📊 Cek Slot:</b> Cek sisa kuota tim Canva.\n` +
+        `• <b>👤 Profil Saya:</b> Cek masa aktif & link referral.\n` +
+        `• <code>/check_slot</code>: Cek slot via text.\n\n` +
+
+        `<i>💡 Tips: Admin tidak memungut biaya uang. Semua gratis via Poin!</i>`,
+        { parse_mode: "HTML" }
+    );
+});
+
 bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return ctx.reply("⛔ Menu ini khusus Admin.");
 
@@ -1210,8 +1232,9 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     const adminKeyboard = new InlineKeyboard()
         .text("📂 Export Data", "adm_export_data").text("⚙️ Cek Team ID", "adm_team_id").row()
         .text("🍪 Status Cookie", "adm_cookie").text("📢 Broadcast", "adm_help_bc").row()
-        .text("🗑️ Menu Hapus", "adm_menu_del").text("💀 Force Expire", "adm_help_exp").row()
-        .text("📋 List Channel", "adm_list_ch").text("➕ Set Channel", "adm_set_ch").row()
+        .text("💰 Manual Point", "adm_help_point").text("📋 List Channel", "adm_list_ch").row()
+        .text("💀 Force Expire", "adm_help_exp").text("📊 Info Slot", "check_slot_btn").row()
+        .text("🗑️ Menu Hapus", "adm_menu_del").row()
         .text("🚀 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick");
 
     await ctx.reply(
