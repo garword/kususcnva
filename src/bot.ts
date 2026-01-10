@@ -657,17 +657,25 @@ async function handleActivation(ctx: any, emailInput: string) {
 
             // A.2 Logic Stacking / Extension (Only if Valid Extension)
             if (isExtension && activeSub) {
-                // Cek Max Horizon (400 Hari)
+                // Cek Max Horizon (Maksimal 12 Bulan / 370 Hari dari SEKARANG)
                 const currentEndDate = new Date(activeSub.end_date as string);
-                const maxDate = new Date();
-                maxDate.setDate(maxDate.getDate() + 400);
+                const extendDays = selectedProd === 4 ? 360 : 180;
 
-                if (currentEndDate > maxDate && !isAdmin(userId)) {
+                // Hitung tanggal masa depan SETELAH ditambah
+                const potentialNewEndDate = new Date(currentEndDate.getTime() + (extendDays * 24 * 60 * 60 * 1000));
+
+                const maxDateFromNow = new Date();
+                maxDateFromNow.setDate(maxDateFromNow.getDate() + 370); // 12 Bulan + Buffer 5 hari
+
+                // Check: Jika hasil perpanjangan melebihi 1 tahun dari HARI INI
+                if (potentialNewEndDate > maxDateFromNow && !isAdmin(userId)) {
                     return ctx.reply(
                         `⛔ <b>Batas Maksimal Tercapai!</b>\n\n` +
-                        `Anda sudah memiliki durasi aktif lebih dari 1 tahun.\n` +
-                        `System membatasi penumpukan (stacking) maksimal 400 hari.\n` +
-                        `Silakan tunggu sampai durasi berkurang.`,
+                        `Anda tidak bisa menambah durasi lagi karena akan melebihi <b>12 Bulan</b>.\n\n` +
+                        `🕒 <b>Saat ini:</b> Expire ${TimeUtils.format(currentEndDate)}\n` +
+                        `➕ <b>Ditambah:</b> ${extendDays} Hari\n` +
+                        `❌ <b>Hasil:</b> Melebihi batas 1 tahun.\n\n` +
+                        `<i>Silakan tunggu sampai durasi berkurang.</i>`,
                         { parse_mode: "HTML" }
                     );
                 }
