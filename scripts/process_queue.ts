@@ -702,72 +702,63 @@ async function runPuppeteerQueue() {
                     successInvites++;
 
                     // Create Subscription Record
-                    // Create Subscription Record
-                    const subId = `sub_${Date.now()}_${userId}`;
+                    // IDEMPOTENCY CHECK: Cek apakah user sudah punya sub aktif yang baru dibuat (kurang dari 1 jam lalu)
+                    const recentSubRes = await sql(`
+                        SELECT id FROM subscriptions 
+                        WHERE user_id = ? AND status = 'active' 
+                        AND product_id = ?
+                        AND start_date > datetime('now', '-1 hour')
+                    `, [userId, prodId]);
 
-                    // Precise Start/End Date Calculation (WIB)
-                    const wibNow = TimeUtils.sqliteNow();
-                    const wibEnd = TimeUtils.sqliteNow(); // We will use manual calc in JS if needed or just trust DB relative
-                    // Better: Use JS to calculate EXACT dates
-                    const startDateObj = TimeUtils.now();
-                    const endDateObj = TimeUtils.addDays(duration);
+                    let subId = "";
 
-                    const startStr = startDateObj.toISOString().replace('T', ' ').substring(0, 19);
-                    const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
+                    if (recentSubRes.rows.length > 0) {
+                        console.log(`⚠️ User ${userId} already has a recent valid subscription. Skipping duplicate INSERT.`);
+                        subId = recentSubRes.rows[0].id as string;
+                    } else {
+                        // Create New Subscription Record
+                        subId = `sub_${Date.now()}_${userId}`;
+                        const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
+                        const endStr = TimeUtils.addDays(duration).toISOString().replace('T', ' ').substring(0, 19);
 
-                    await sql(`
-                        INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
-                        VALUES (?, ?, ?, ?, ?, 'active')
-                    `, [subId, userId, prodId, startStr, endStr]);
+                        await sql(`
+                            INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
+                            VALUES (?, ?, ?, ?, ?, 'active')
+                        `, [subId, userId, prodId, startStr, endStr]);
+                        console.log(`✅ Subscription Created: ${subId}`);
+                    }
 
                     if (userId > 0) {
                         let msgId = null;
                         const lastMsgId = user.last_message_id; // Get stored ID
 
                         if (result.message.startsWith("http")) {
-                            // SEND LINK TO USER
                             const text = `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`;
-
-                            // Try Edit First
-                            if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text);
-                            }
-                            // Fallback to Send
-                            if (!msgId) {
-                                msgId = await sendTelegram(userId.toString(), text);
-                            }
+                            if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text);
+                            if (!msgId) msgId = await sendTelegram(userId.toString(), text);
 
                         } else {
-                            // SEND CODE TO USER (Monospaced & Professional)
                             const code = result.message;
                             const text = `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\nUntuk mengaktifkan Pro, ikuti langkah berikut:\n\n<b>1. Buka Halaman Join</b>\nKlik link ini: <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n\n<b>2. Masukkan Kode Identifikasi</b>\nSalin dan tempel kode ini:\n\n<code>${code}</code>\n<i>(Tekan kode untuk menyalin otomatis)</i>\n\n<b>3. Selesai!</b>\nKlik <b>"Join"</b> dan nikmati fitur Canva Pro. ✨\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`;
-
-                            // Try Edit First
-                            if (lastMsgId) {
-                                msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text, { disable_web_page_preview: true });
-                            }
-                            // Fallback to Send
-                            if (!msgId) {
-                                msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
-                            }
+                            if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text, { disable_web_page_preview: true });
+                            if (!msgId) msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
                         }
 
-                        // UPDATE STATUS ONLY IF MESSAGE SENT SUCCESSFULLY
+                        // ALWAYS MARK ACTIVE if Invite Succeeded (Even if Telegram Failed)
+                        // This prevents infinite loops of creating subscriptions
+                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
+
                         if (msgId) {
-                            // Update user status but KEEP selected_product_id (don't reset to 1)
-                            await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
                             console.log(`✅ User ${userId} marked as ACTIVE after sending msg ${msgId}`);
-
-                            // AUTO DELETE
+                            // AUTO DELETE logic...
                             console.log(`⏳ Scheduled deletion for message ${msgId} in 2 minutes...`);
-                            setTimeout(() => {
-                                deleteTelegramMessage(userId, msgId);
-                            }, 120 * 1000);
+                            setTimeout(() => { deleteTelegramMessage(userId, msgId); }, 120 * 1000);
                         } else {
-                            console.error(`❌ Failed to send Telegram message to ${userId}. User status NOT updated.`);
+                            console.error(`⚠️ Notification failed for ${userId}, but Invite Code is generated: ${result.message}`);
                         }
+
                     } else {
-                        // For manual testing without telegram ID, just update status
+                        // For manual testing without telegram ID
                         await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
                     }
 
