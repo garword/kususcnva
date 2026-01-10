@@ -1772,49 +1772,58 @@ bot.command("data", async (ctx) => {
         const fileName = `data-${dateStr}.txt`;
 
         let content = `LAPORAN DATA BOT CANVA\n`;
-        content += `Tanggal Generate: ${nowJakarta.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}\n`;
+        content += `Tanggal Generate: ${nowJakarta.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }).replace(/\./g, ':')}\n`;
         content += `Total User: ${res.rows.length}\n`;
-        content += `======================================================================================================================================================\n`;
-        content += `ID         | USERNAME           | NAMA                 | EMAIL                            | PAKET           | EXPIRED (WIB)| POIN  | JOIN DATE   \n`;
-        content += `======================================================================================================================================================\n`;
+        content += `==========================================================================================================================================================================\n`;
+        // Widen Date columns to 22 chars for "dd/mm/yyyy HH:mm:ss"
+        content += `ID         | USERNAME           | NAMA                 | EMAIL                            | PAKET           | EXPIRED (WIB)        | POIN  | JOIN DATE (WIB)      \n`;
+        content += `==========================================================================================================================================================================\n`;
 
         for (const row of res.rows) {
             const id = String(row.id).padEnd(10);
             const username = String(row.username ? `@${row.username}` : "-").padEnd(18);
             const name = String(row.first_name || "No Name").substring(0, 20).padEnd(20);
             const email = String(row.email || "-").padEnd(32);
-            // Consolidated status logic: Show Plan Name, or sub_status if plan unknown
             const plan = String(row.plan_name || (row.sub_status === 'active' ? 'Active' : '-')).padEnd(15);
 
-            // Format End Date to WIB
+            // Format End Date to WIB (Full Precision)
             const expDateRaw = row.end_date ? new Date(row.end_date as string) : null;
-            let expDate = "-           ";
+            let expDate = "-                     "; // 22 spaces
             if (expDateRaw) {
-                // Convert to parts for custom formatting yyyy-mm-dd
                 const jktDate = new Date(expDateRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
                 const y = jktDate.getFullYear();
                 const m = String(jktDate.getMonth() + 1).padStart(2, '0');
                 const d = String(jktDate.getDate()).padStart(2, '0');
-                expDate = `${y}-${m}-${d}`.padEnd(12);
+                const H = String(jktDate.getHours()).padStart(2, '0');
+                const M = String(jktDate.getMinutes()).padStart(2, '0');
+                const S = String(jktDate.getSeconds()).padStart(2, '0');
+                expDate = `${d}/${m}/${y} ${H}:${M}:${S}`.padEnd(22); // Reordered to dd/mm/yyyy
+            } else {
+                expDate = expDate.padEnd(22);
             }
 
             const points = String(row.referral_points || 0).padEnd(5);
 
-            // Format Join Date to WIB
-            let joinDate = "-";
+            // Format Join Date to WIB (Full Precision)
+            let joinDate = "-                     "; // 22 spaces
             if (row.joined_at) {
                 const joinRaw = new Date(row.joined_at as string);
                 const jktJoin = new Date(joinRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
                 const y = jktJoin.getFullYear();
                 const m = String(jktJoin.getMonth() + 1).padStart(2, '0');
                 const d = String(jktJoin.getDate()).padStart(2, '0');
-                joinDate = `${y}-${m}-${d}`;
+                const H = String(jktJoin.getHours()).padStart(2, '0');
+                const M = String(jktJoin.getMinutes()).padStart(2, '0');
+                const S = String(jktJoin.getSeconds()).padStart(2, '0');
+                joinDate = `${d}/${m}/${y} ${H}:${M}:${S}`.padEnd(22);
+            } else {
+                joinDate = joinDate.padEnd(22);
             }
 
             content += `${id} | ${username} | ${name} | ${email} | ${plan} | ${expDate} | ${points} | ${joinDate}\n`;
         }
 
-        content += `====================================================================================================\n`;
+        content += `==========================================================================================================================================================================\n`;
         content += `End of Report.\n`;
 
         // 3. Send as Document (Virtual File)
