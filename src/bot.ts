@@ -552,7 +552,7 @@ bot.command("aktivasi", async (ctx) => {
 
     // NEW: Check Team Limit First
     const limitInfo = await checkTeamLimit();
-    if (limitInfo.isFull) {
+    if (limitInfo.isFull && !isAdmin(userId)) {
         return ctx.reply(
             `⛔ <b>Tim Canva Penuh!</b>\n\n` +
             `Maaf, saat ini slot tim sudah mencapai batas (500/500).\n` +
@@ -613,7 +613,7 @@ bot.command("aktivasi", async (ctx) => {
                 const maxDate = new Date();
                 maxDate.setDate(maxDate.getDate() + 400);
 
-                if (currentEndDate > maxDate) {
+                if (currentEndDate > maxDate && !isAdmin(userId)) {
                     return ctx.reply(
                         `⛔ <b>Batas Maksimal Tercapai!</b>\n\n` +
                         `Anda sudah memiliki durasi aktif lebih dari 1 tahun.\n` +
