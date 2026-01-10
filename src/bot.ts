@@ -593,16 +593,22 @@ bot.command("aktivasi", async (ctx) => {
         // ============================================================
         // CASE A: PAKET PREMIUM (6 BULAN) - ID 3
         // ============================================================
-        if (selectedProd === 3) {
+        // ============================================================
+        // CASE A: PAKET PREMIUM (6 BULAN or 12 BULAN) - ID 3 or 4
+        // ============================================================
+        if (selectedProd === 3 || selectedProd === 4) {
+            const requiredPoints = selectedProd === 4 ? 12 : 6;
+            const pkgName = selectedProd === 4 ? "12 Bulan Premium" : "6 Bulan Premium";
+
             // A.1 Cek Poin (Admin Bypass)
-            if (currentPoints < 6 && !isAdmin(userId)) {
+            if (currentPoints < requiredPoints && !isAdmin(userId)) {
                 return ctx.reply(
                     `⛔ <b>Poin Tidak Cukup!</b>\n\n` +
-                    `Paket 6 Bulan membutuhkan <b>6 Poin Referral</b>.\n` +
+                    `Paket <b>${pkgName}</b> membutuhkan <b>${requiredPoints} Poin Referral</b>.\n` +
                     `Sisa Poin Anda: <b>${currentPoints}</b>\n\n` +
                     `💡 <b>Solusi:</b>\n` +
                     `1. Undang teman lagi (share link referral).\n` +
-                    `2. Atau ganti ke Paket Free di tombol "Menu Paket".`,
+                    `2. Atau ganti ke Paket Free / 6 Bulan di tombol "Menu Paket".`,
                     { parse_mode: "HTML" }
                 );
             }
@@ -627,34 +633,39 @@ bot.command("aktivasi", async (ctx) => {
                 // EKSEKUSI PERPANJANGAN (INSTANT)
                 // 1. Potong Poin (Skip for Admin)
                 if (!isAdmin(userId)) {
-                    await sql("UPDATE users SET referral_points = referral_points - 6 WHERE id = ?", [userId]);
+                    await sql("UPDATE users SET referral_points = referral_points - ? WHERE id = ?", [requiredPoints, userId]);
                 }
 
-                // 2. Extend DB (+180 Days)
+                // 2. Extend DB (+180 Days or +360 Days)
+                const extendDays = selectedProd === 4 ? 360 : 180;
+
                 await sql(
                     `UPDATE subscriptions 
-                     SET end_date = datetime(end_date, '+180 days') 
+                     SET end_date = datetime(end_date, '+${extendDays} days') 
                      WHERE id = ?`,
                     [activeSub.id]
                 );
 
                 // 3. Get New Date
                 const newSubRes = await sql("SELECT end_date FROM subscriptions WHERE id = ?", [activeSub.id]);
-                const newEndDate = new Date(newSubRes.rows[0].end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long' });
+                const newEndRaw = new Date(newSubRes.rows[0].end_date as string);
+
+                // Use TimeUtils if available locally or default Date
+                const newEndDate = newEndRaw.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long' });
 
                 return ctx.reply(
                     `✅ <b>Perpanjangan Berhasil! (Instant)</b>\n\n` +
-                    `Paket: <b>6 Bulan Premium</b>\n` +
-                    `Status: <b>Diperpanjang (+180 Hari)</b>\n` +
+                    `Paket: <b>${pkgName}</b>\n` +
+                    `Status: <b>Diperpanjang (+${extendDays} Hari)</b>\n` +
                     `Exp Baru: <b>${newEndDate}</b>\n\n` +
-                    `<i>Poin Anda telah dipotong 6 poin. Tidak perlu invite ulang.</i>`,
+                    `<i>Poin Anda telah dipotong ${requiredPoints} poin. Tidak perlu invite ulang.</i>`,
                     { parse_mode: "HTML" }
                 );
             }
 
             // A.3 User Baru / Tidak Aktif -> Lanjut ke Queue (Potong Poin Dulu)
             if (!isAdmin(userId)) {
-                await sql("UPDATE users SET referral_points = referral_points - 6 WHERE id = ?", [userId]);
+                await sql("UPDATE users SET referral_points = referral_points - ? WHERE id = ?", [requiredPoints, userId]);
             }
         }
 
