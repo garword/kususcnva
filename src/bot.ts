@@ -739,6 +739,9 @@ async function handleActivation(ctx: any, emailInput: string) {
                 try { await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id); } catch (e) { }
 
                 if (success) {
+                    // Reset Selection so they must choose again next time
+                    await sql("UPDATE users SET selected_product_id = NULL WHERE id = ?", [userId]);
+
                     return ctx.reply(
                         `✅ <b>Perpanjangan Berhasil! (v2)</b>\n\n` +
                         `Paket: <b>${pkgName}</b>\n` +
@@ -810,8 +813,8 @@ async function handleActivation(ctx: any, emailInput: string) {
             { parse_mode: "HTML" }
         );
 
-        // 5. Save Message ID for editing later
-        await sql("UPDATE users SET last_message_id = ? WHERE id = ?", [sentMsg.message_id, userId]);
+        // 5. Save Message ID & Reset Selection
+        await sql("UPDATE users SET last_message_id = ?, selected_product_id = NULL WHERE id = ?", [sentMsg.message_id, userId]);
 
     } catch (error: any) {
         await ctx.reply(`❌ Error System: ${error.message}`);
