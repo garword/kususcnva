@@ -21,11 +21,30 @@ export const db = createClient({
 // Fungsi bantuan untuk menjalankan query SQL standar
 // Contoh penggunaan: await sql("SELECT * FROM users WHERE id = ?", [123]);
 export const sql = async (query: string, args: any[] = []) => {
-    try {
-        const result = await db.execute({ sql: query, args });
-        return result;
-    } catch (error) {
-        console.error("Database Error:", error);
-        throw error;
+    let attempts = 0;
+    const maxRetries = 3;
+
+    while (attempts < maxRetries) {
+        attempts++;
+        try {
+            const result = await db.execute({ sql: query, args });
+            return result;
+        } catch (error: any) {
+            // Only retry on network/fetch errors
+            if (attempts < maxRetries && (
+                error.message.includes("fetch failed") ||
+                error.message.includes("ConnectTimeoutError") ||
+                error.code === "UND_ERR_CONNECT_TIMEOUT"
+            )) {
+                console.warn(`⚠️ DB Retry ${attempts}/${maxRetries} due to network error...`);
+                await new Promise(r => setTimeout(r, 1500)); // Wait 1.5s
+                continue;
+            }
+
+            console.error("Database Error:", error);
+            throw error;
+        }
     }
+    // Fallback (should be unreachable due to throw)
+    throw new Error("DB Connection Failed after retries");
 };
