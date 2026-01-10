@@ -231,8 +231,9 @@ async function revokeStaleInvites() {
                 // Find and Click Checkbox for this user
                 const userRowFound = await page.evaluate(async (targetName) => {
                     const elements = Array.from(document.querySelectorAll('td'));
-                    // Strict match for name column mainly
-                    const nameEl = elements.find(e => e.innerText.trim().toLowerCase() === targetName);
+                    // FIX: Convert targetName to lowercase for comparison
+                    const lowerTarget = targetName.toLowerCase();
+                    const nameEl = elements.find(e => e.innerText.trim().toLowerCase() === lowerTarget);
 
                     if (!nameEl) return false;
                     const row = nameEl.closest('tr');
@@ -250,62 +251,107 @@ async function revokeStaleInvites() {
                     await randomDelay(1000, 1500);
 
                     // Click "Remove users" (Header button that appears)
-                    // auto_kick.ts uses: button[aria-label="Remove users"]
-                    const removeMainBtn = await page.waitForSelector('button[aria-label="Remove users"], button[aria-label="Hapus pengguna"]', { visible: true, timeout: 5000 }).catch(() => null);
+                    // Strategy: Look for the trash icon or "Remove" button in the bulk action toolbar
+                    let removeToolbarBtn = await page.waitForSelector('button[aria-label="Remove users"], button[aria-label="Hapus pengguna"]', { visible: true, timeout: 5000 }).catch(() => null);
 
-                    if (removeMainBtn) {
-                        await removeMainBtn.click();
-                        console.log("      🗑️ Clicked Remove button.");
-                        await randomDelay(1000, 1500);
-
-                        // Confirm Modal "Remove from team"
-                        const confirmBtn = await page.evaluateHandle(() => {
-                            const spans = Array.from(document.querySelectorAll('span'));
-                            // Check english and indonesian
-                            const target = spans.find(s =>
-                                s.textContent?.includes('Remove from team') ||
-                                s.textContent?.includes('Hapus dari tim')
-                            );
-                            return target ? target.parentElement : null;
+                    if (!removeToolbarBtn) {
+                        // Fallback: Find button by icon or partial text in specific toolbar area
+                        removeToolbarBtn = await page.evaluateHandle(() => {
+                            const buttons = Array.from(document.querySelectorAll('section button')); // Bulk toolbar usually in a section
+                            return buttons.find(b => b.ariaLabel?.toLowerCase().includes('remove') || b.innerText.toLowerCase().includes('remove')) || null;
                         });
-
-                        if (confirmBtn) {
-                            await (confirmBtn as any).click();
-                            console.log("      ✅ Confirmed Removal.");
-                            revokedCount++;
-                            await sendTelegram(`♻️ <b>Stale Invite Revoked</b>\nUser: ${targetName}\nReason: > 1 Hour Pending`);
-
-                            // Optional: Update DB status to 'revoked' or 'deleted'
-                            await sql("UPDATE users SET status = 'revoked' WHERE email = ?", [targetName]); // assuming name=email match
-                        } else {
-                            console.log("      ⚠️ Configure button not found.");
-                        }
-                    } else {
-                        console.log("      ⚠️ Remove header button not found (Maybe multiple selected? or lost focus)");
                     }
 
-                    // Uncheck if failed? Or page refresh?
-                    // Safe to reload if bulk logic is complex, but one by one is fine.
-                    // If successful, the row disappears.
-                    await randomDelay(2000, 3000);
+                    if (removeToolbarBtn) {
+                        // ElementHandle -> click
+                        if (removeToolbarBtn.asElement()) await removeToolbarBtn.asElement()!.click();
+                        else await (removeToolbarBtn as any).click(); // Fallback
 
+                        console.log("      🗑️ Clicked Remove button in Toolbar.");
+                        await randomDelay(1000, 1500);
+
+                        // CONFIRM MODAL: Click "Remove from team"
+                        // Strategy: Find button by exact text match
+                        const confirmBtn = await page.evaluateHandle(() => {
+                            const buttons = Array.from(document.querySelectorAll('button'));
+                            return buttons.find(b => {
+                                const t = b.innerText.toLowerCase();
+                                return t.includes('remove from team') || t.includes('hapus dari tim');
+                            });
+                        });
+
+                        if (confirmBtn && confirmBtn.asElement()) {
+                            await confirmBtn.asElement()!.click();
+                            console.log("      ✅ Clicked 'Remove from team' confirmation.");
+
+                            // WAIT FOR SUCCESS TOAST
+                            // User requirement: Wait for "1 person was removed"
+                            try {
+                                await page.waitForFunction(() => {
+                                    const bodyText = document.body.innerText.toLowerCase();
+                                    return bodyText.includes('person was removed') || bodyText.includes('orang telah dihapus');
+                                }, { timeout: 10000 });
+
+                                console.log("      🎉 Success Verified: 'Person was removed' message detected.");
+                                revokedCount++;
+                            } catch (e) {
+                                console.warn("      ⚠️ Warning: Success message not detected (User might be deleted anyway).");
+                            }
+                        } else {
+                            console.warn("      ❌ Could not find Confirmation Button (Modal).");
+                        }
+                    } else {
+                        console.warn("      ❌ Could not find Remove Button (Toolbar).");
+                    }
+
+                    // Confirm Modal "Remove from team"
+                    const confirmBtn = await page.evaluateHandle(() => {
+                        const spans = Array.from(document.querySelectorAll('span'));
+                        // Check english and indonesian
+                        const target = spans.find(s =>
+                            s.textContent?.includes('Remove from team') ||
+                            s.textContent?.includes('Hapus dari tim')
+                        );
+                        return target ? target.parentElement : null;
+                    });
+
+                    if (confirmBtn) {
+                        await (confirmBtn as any).click();
+                        console.log("      ✅ Confirmed Removal.");
+                        revokedCount++;
+                        await sendTelegram(`♻️ <b>Stale Invite Revoked</b>\nUser: ${targetName}\nReason: > 1 Hour Pending`);
+
+                        // Optional: Update DB status to 'revoked' or 'deleted'
+                        await sql("UPDATE users SET status = 'revoked' WHERE email = ?", [targetName]); // assuming name=email match
+                    } else {
+                        console.log("      ⚠️ Configure button not found.");
+                    }
                 } else {
-                    console.log("      ⚠️ Row not found/clickable.");
+                    console.log("      ⚠️ Remove header button not found (Maybe multiple selected? or lost focus)");
                 }
 
-            } catch (err: any) {
-                console.error(`      ❌ Failed to revoke ${targetName}: ${err.message}`);
+                // Uncheck if failed? Or page refresh?
+                // Safe to reload if bulk logic is complex, but one by one is fine.
+                // If successful, the row disappears.
+                await randomDelay(2000, 3000);
+
+            } else {
+                console.log("      ⚠️ Row not found/clickable.");
             }
+
+        } catch (err: any) {
+            console.error(`      ❌ Failed to revoke ${targetName}: ${err.message}`);
         }
+    }
 
         console.log(`🏁 Cleanup Complete. Revoked: ${revokedCount}`);
 
-    } catch (e: any) {
-        console.error("Critical Error:", e);
-        await page.screenshot({ path: 'error_revoke_stale.jpg' });
-    } finally {
-        setTimeout(() => browser.close(), 5000);
-    }
+} catch (e: any) {
+    console.error("Critical Error:", e);
+    await page.screenshot({ path: 'error_revoke_stale.jpg' });
+} finally {
+    setTimeout(() => browser.close(), 5000);
+}
 }
 
 revokeStaleInvites();
