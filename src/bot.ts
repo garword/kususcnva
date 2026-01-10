@@ -1298,9 +1298,24 @@ bot.callbackQuery("view_account_list", async (ctx) => {
         const list = res.rows.map((row: any, i: number) => {
             const num = i + 1;
             const email = row.email || "No Email";
-            const plan = row.plan_name;
-            // Parse Date
-            const expStr = row.end_date ? TimeUtils.format(new Date(row.end_date)) : "-";
+            let plan = row.plan_name;
+            let expStr = "-";
+
+            if (row.end_date) {
+                const expDate = new Date(row.end_date);
+                expStr = TimeUtils.format(expDate);
+
+                // Check Duration for "User Premium" label
+                // If active > 1 month (approx > 35 days remaining)
+                const now = new Date();
+                const diffMs = expDate.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+                if (diffDays > 35) {
+                    plan = "User Premium";
+                }
+            }
+
             return `<b>${num}. ${email}</b>\n   📦 ${plan}\n   ⏳ Exp: ${expStr}`;
         }).join("\n\n");
 
