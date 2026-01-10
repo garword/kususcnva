@@ -329,9 +329,12 @@ async function kickExpiredUsers() {
                     console.log("   ✅ Kick Confirmed!");
                     kickedCount++;
 
-                    // Update DB (Only if not manual mode or if ID exists)
+                    // Update DB (Only Subscriptions, preserve User record)
                     if (user.id) {
-                        await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
+                        // Jangan ubah status User jadi kicked, biar kalau dia beli lagi nggak error
+                        // await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
+
+                        // Cukup tandai langganan ini yang berakhir
                         await sql("UPDATE subscriptions SET status = 'kicked' WHERE id = ?", [user.sub_id]);
                     }
                     await sendTelegram(`🚫 <b>User Kicked</b>\nEmail: ${targetEmail}\nReason: ${manualTarget ? 'Manual Kick' : 'Expired'}`);
