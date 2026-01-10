@@ -1,75 +1,60 @@
 import { sql } from "../lib/db";
-import { removeUser } from "../lib/canva";
-import { Bot } from "grammy";
-import dotenv from "dotenv";
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import axios from 'axios';
 
-dotenv.config();
-
-// Kita butuh instance bot baru atau import yang ada untuk kirim notif
-const token = process.env.BOT_TOKEN;
-const adminChannel = process.env.ADMIN_CHANNEL_ID; // ID Channel Laporan
-const bot = new Bot(token || "");
-
-export default async function handler(req: any, res: any) {
-    // Verifikasi Signature Vercel Cron (Opsional tapi disarankan untuk keamanan)
-    // const authHeader = req.headers.get('authorization');
-    // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) { ... }
-
+export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
-        console.log("Menjalankan CRON Cek Kedaluwarsa...");
+        console.log("🕒 CRON: Checking for expired subscriptions...");
 
-        // 1. Cari user yang sudah expired tapi status masih aktif
-        // Menggunakan syntax SQL standar (datetime comparison)
+        // 1. Check for Expired Subs (Active & Past End Date)
         const result = await sql(`
-      SELECT s.id, s.user_id, u.email, u.username, s.end_date 
-      FROM subscriptions s
-      JOIN users u ON s.user_id = u.id
-      WHERE s.end_date < datetime('now') AND s.status = 'active'
-    `);
+            SELECT count(*) as count FROM subscriptions 
+            WHERE status = 'active' AND end_date < datetime('now')
+        `);
 
-        const expiredSubs = result.rows;
-        console.log(`Ditemukan ${expiredSubs.length} langganan kedaluwarsa.`);
+        const count = result.rows[0].count as number;
 
-        for (const sub of expiredSubs) {
-            const email = sub.email as string;
-            const subId = sub.id as string;
-            const userId = sub.user_id as number;
-            const username = sub.username as string;
+        if (count > 0) {
+            console.log(`🚨 Found ${count} expired users. Triggering GitHub Action...`);
 
-            // 2. Lakukan Kick dari Canva
-            const kickResult = await removeUser(email);
+            // 2. Trigger GitHub Action
+            const githubToken = process.env.GITHUB_TOKEN;
+            const repo = process.env.GITHUB_REPO; // e.g. "username/repo"
 
-            if (kickResult.success) {
-                // 3. Update status di Database
-                await sql(`UPDATE subscriptions SET status = 'kicked' WHERE id = ?`, [subId]);
-
-                // 4. Notifikasi ke User
-                try {
-                    await bot.api.sendMessage(userId, "Masa langganan Canva Anda telah habis. Akses telah dicabut. Silakan beli paket baru jika ingin lanjut.");
-                } catch (e) {
-                    console.log(`Gagal kirim pesan ke user ${userId} (Mungkin blokir bot).`);
-                }
-
-                // 5. Notifikasi ke Admin Channel
-                if (adminChannel) {
-                    await bot.api.sendMessage(adminChannel,
-                        `🗑 **Auto-Kick Berhasil**\n` +
-                        `User: ${username} (ID: ${userId})\n` +
-                        `Email: ${email}\n` +
-                        `Expired: ${sub.end_date}`
-                    );
-                }
-
-            } else {
-                console.error(`Gagal kick user ${email}: ${kickResult.message}`);
-                // Log error di DB atau notif admin bisa ditambahkan disini
+            if (!githubToken || !repo) {
+                console.error("❌ Missing GITHUB_TOKEN or GITHUB_REPO env vars!");
+                return res.status(500).json({
+                    success: false,
+                    error: "Environment Variables GITHUB_TOKEN or GITHUB_REPO not set on Vercel."
+                });
             }
+
+            // Trigger 'process_queue' event
+            await axios.post(
+                `https://api.github.com/repos/${repo}/dispatches`,
+                { event_type: 'process_queue' },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${githubToken}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }
+            );
+
+            console.log("✅ GitHub Action Triggered successfully.");
+            return res.status(200).json({
+                success: true,
+                message: `Triggered Kick Process for ${count} users.`,
+                count: count
+            });
+
+        } else {
+            console.log("✅ No expired users found.");
+            return res.status(200).json({ success: true, message: "No expired users", count: 0 });
         }
 
-        res.status(200).json({ success: true, processed: expiredSubs.length });
-
-    } catch (error: any) {
-        console.error("Cron Error:", error);
-        res.status(500).json({ error: error.message });
+    } catch (e: any) {
+        console.error("❌ Cron Error:", e.message);
+        return res.status(500).json({ error: e.message });
     }
 }

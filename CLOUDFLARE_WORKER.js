@@ -20,6 +20,10 @@ export default {
     async scheduled(event, env, ctx) {
         // GANTI URL INI
         const targetUrl = 'https://kususcnva.vercel.app/api/ping';
+        const cronUrl = 'https://kususcnva.vercel.app/api/cron';
+
+        // 0. Trigger Cron Check (Async) - Cek Expired & Kick
+        ctx.waitUntil(fetch(cronUrl).catch(e => console.error("Cron failed:", e)));
 
         // Cloudflare Cron minimal 1 menit. 
         // Agar interval terasa seperti ~5 detik, kita lakukan "Burst Ping" (Looping) di sini.
