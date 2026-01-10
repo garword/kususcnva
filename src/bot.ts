@@ -4,6 +4,7 @@ import { inviteUser, checkSlots, getAccountInfo } from "../lib/canva";
 import dotenv from "dotenv";
 import axios from "axios";
 import { exec } from "child_process";
+import { TimeUtils } from "./lib/time";
 
 dotenv.config();
 
@@ -892,6 +893,21 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     const refLink = `https://t.me/${ctx.me.username}?start=${user.referral_code}`;
     const role = isAdmin(userId) ? "👑 Admin" : "👤 Member";
 
+    // Button to view active accounts (Admin Only or for everyone? User implied "active accounts" list, likely for Admin to see stock or for user to see THEIR accounts?)
+    // "liat daftar akun yang aktif lengkap deengan email dan masa aktifnya" -> implies GLOBAL active accounts (Admin Feature).
+    // Let's assume Admin only feature for now, or check if regular user has multiple accounts?
+    // The previous code `SELECT * FROM users` implies single user.
+    // Given the context of "bot store" / "admin panel", this likely refers to the ADMIN seeing ALL active accounts.
+    // BUT the button is in "Profil Saya".
+    // If I am a member, why would I see "List Akun"? Maybe my OWN accounts?
+    // "daftar /list akun yang aktif" -> sounds like "List All Active Accounts".
+    // I will add it for ADMIN ONLY based on "liat daftar akun yang aktif" phrasing which usually means monitoring.
+
+    const keyboard = new InlineKeyboard();
+    if (isAdmin(userId)) {
+        keyboard.text("📋 Lihat Daftar Akun", "view_account_list");
+    }
+
     await ctx.reply(
         `👤 <b>Profil Pengguna</b>\n\n` +
         `🆔 ID: <code>${userId}</code>\n` +
@@ -905,7 +921,10 @@ bot.hears("👤 Profil Saya", async (ctx) => {
         `• Poin: <b>${points}</b>\n` +
         `• Link: <code>${refLink}</code>\n\n` +
         `<i>Bagikan link untuk dapat poin!</i>`,
-        { parse_mode: "HTML" }
+        {
+            parse_mode: "HTML",
+            reply_markup: keyboard
+        }
     );
 });
 
