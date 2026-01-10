@@ -537,18 +537,31 @@ async function checkTeamLimit(): Promise<{ isFull: boolean, nextSlot: string | n
 }
 
 // User Command: Aktivasi (User Submit Email)
-bot.command("aktivasi", async (ctx) => {
+// Callback: Trigger Activation via Button
+bot.callbackQuery("act_extend", async (ctx) => {
+    const userId = ctx.from.id;
+    const userRes = await sql("SELECT email FROM users WHERE id = ?", [userId]);
+    if (userRes.rows.length === 0 || !userRes.rows[0].email) {
+        return ctx.answerCallbackQuery("❌ Email tidak ditemukan.");
+    }
+    const email = userRes.rows[0].email;
+    await handleActivation(ctx, email as string);
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("act_new_email", async (ctx) => {
+    await ctx.reply("📧 Silakan ketik email baru dengan format:\n<code>/aktivasi emailbaru@gmail.com</code>", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+// Refactor: Main Logic Extracted
+async function handleActivation(ctx: any, emailInput: string) {
     const userId = ctx.from?.id;
     if (!userId) return;
 
     // Force Subscribe Check
     if (!(await checkMember(userId, ctx))) {
         return ctx.reply("⛔ <b>Akses Ditolak!</b>\n\nAnda belum join channel wajib.\nSilakan ketik /start untuk melihat list channel.\n\n⚠️ <i>Ingat: Keluar dari channel = Auto-Kick Canva!</i>", { parse_mode: "HTML" });
-    }
-
-    const email = ctx.match;
-    if (!email || !email.includes("@")) {
-        return ctx.reply("⚠️ <b>Format Salah!</b>\nContoh: <code>/aktivasi emailmu@gmail.com</code>", { parse_mode: "HTML" });
     }
 
     // NEW: Check Team Limit First
@@ -567,9 +580,13 @@ bot.command("aktivasi", async (ctx) => {
 
     try {
         // 0. Ambil Data User (Produk & Poin)
-        const userRes = await sql("SELECT selected_product_id, referral_points FROM users WHERE id = ?", [userId]);
+        const userRes = await sql("SELECT selected_product_id, referral_points, email as saved_email FROM users WHERE id = ?", [userId]);
         const user = userRes.rows[0];
-        const selectedProd = user.selected_product_id; // REMOVED fallback || 1
+        const selectedProd = user.selected_product_id;
+        const savedEmail = user.saved_email;
+
+        // FIX: Safe Integer Parsing
+        const currentPoints = parseInt(user.referral_points as any) || 0;
 
         // NEW: Enforce Product Selection
         if (!selectedProd) {
@@ -581,8 +598,6 @@ bot.command("aktivasi", async (ctx) => {
             );
         }
 
-        const currentPoints = (user.referral_points as number) || 0;
-
         // 1. Ambil Subscription Aktif (Jika Ada)
         const subRes = await sql(
             `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now')`,
@@ -591,8 +606,35 @@ bot.command("aktivasi", async (ctx) => {
         const activeSub = subRes.rows.length > 0 ? subRes.rows[0] : null;
 
         // ============================================================
-        // CASE A: PAKET PREMIUM (6 BULAN) - ID 3
+        // LOGIC: EXTENSION vs NEW ACCOUNT
         // ============================================================
+        let isExtension = false;
+
+        if (activeSub) {
+            // Check if Input Email matches Current Saved Email
+            if (emailInput === savedEmail) {
+                isExtension = true;
+            } else {
+                // Email Mismatch
+                if (!isAdmin(userId)) {
+                    // Member: Block
+                    return ctx.reply(
+                        `⛔ <b>Satu Akun Saja!</b>\n\n` +
+                        `Anda sudah memiliki langganan aktif untuk email: <b>${savedEmail}</b>.\n` +
+                        `Member hanya diperbolehkan memiliki 1 akun aktif.\n\n` +
+                        `💡 <b>Ingin ganti email?</b>\n` +
+                        `Hubungi Admin atau tunggu masa aktif habis.`,
+                        { parse_mode: "HTML" }
+                    );
+                } else {
+                    // Admin: Allow New (Force Invite)
+                    isExtension = false;
+                }
+            }
+        } else {
+            isExtension = false;
+        }
+
         // ============================================================
         // CASE A: PAKET PREMIUM (6 BULAN or 12 BULAN) - ID 3 or 4
         // ============================================================
@@ -600,7 +642,7 @@ bot.command("aktivasi", async (ctx) => {
             const requiredPoints = selectedProd === 4 ? 12 : 6;
             const pkgName = selectedProd === 4 ? "12 Bulan Premium" : "6 Bulan Premium";
 
-            // A.1 Cek Poin (Admin Bypass)
+            // A.1 Cek Poin (Safe Check)
             if (currentPoints < requiredPoints && !isAdmin(userId)) {
                 return ctx.reply(
                     `⛔ <b>Poin Tidak Cukup!</b>\n\n` +
@@ -613,8 +655,8 @@ bot.command("aktivasi", async (ctx) => {
                 );
             }
 
-            // A.2 Logic Stacking / Extension (Jika sudah aktif)
-            if (activeSub) {
+            // A.2 Logic Stacking / Extension (Only if Valid Extension)
+            if (isExtension && activeSub) {
                 // Cek Max Horizon (400 Hari)
                 const currentEndDate = new Date(activeSub.end_date as string);
                 const maxDate = new Date();
@@ -630,40 +672,100 @@ bot.command("aktivasi", async (ctx) => {
                     );
                 }
 
-                // EKSEKUSI PERPANJANGAN (INSTANT)
-                // 1. Potong Poin (Skip for Admin)
+                // EKSEKUSI PERPANJANGAN (DENGAN RETRY & REFUND)
+                const processingMsg = await ctx.reply("⏳ <b>Memproses Perpanjangan...</b>\nMohon tunggu sistem update database.", { parse_mode: "HTML" });
+
+                // 1. Potong Poin Dulu (Optimistik) - Skip for Admin
+                let pointsDeducted = false;
                 if (!isAdmin(userId)) {
                     await sql("UPDATE users SET referral_points = referral_points - ? WHERE id = ?", [requiredPoints, userId]);
+                    pointsDeducted = true;
                 }
 
-                // 2. Extend DB (+180 Days or +360 Days)
+                // 2. Retry Loop (Max 5x)
                 const extendDays = selectedProd === 4 ? 360 : 180;
+                let success = false;
+                let finalExpiryStr = "";
+                let attempts = 0;
 
-                await sql(
-                    `UPDATE subscriptions 
-                     SET end_date = datetime(end_date, '+${extendDays} days') 
-                     WHERE id = ?`,
-                    [activeSub.id]
-                );
+                // JS Date Calc (Reliable)
+                // Assuming end_date in DB is UTC string "YYYY-MM-DD HH:mm:ss"
+                const dbDateStr = activeSub.end_date as string;
+                // Parse manually or use Date constructor (it assumes local if no TZ, but DB usually UTC-ish if using datetime('now'))
+                // Safer: Treat as UTC by appending 'Z' or parsing components if format is consistent.
+                // SQLite `datetime('now')` is UTC. `datetime('now', 'localtime')` is local.
+                // Using `new Date(string)` handles ISO. 
 
-                // 3. Get New Date
-                const newSubRes = await sql("SELECT end_date FROM subscriptions WHERE id = ?", [activeSub.id]);
-                const newEndRaw = new Date(newSubRes.rows[0].end_date as string);
+                const oldEndDate = new Date(dbDateStr.includes('T') ? dbDateStr : dbDateStr.replace(' ', 'T') + 'Z');
+                const newEndDateObj = new Date(oldEndDate.getTime() + (extendDays * 24 * 60 * 60 * 1000));
 
-                // Use TimeUtils if available locally or default Date
-                const newEndDate = newEndRaw.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long' });
+                // Format back to SQLite string "YYYY-MM-DD HH:mm:ss"
+                // toISOString returns "2023-01-01T00:00:00.000Z"
+                const newEndDateStr = newEndDateObj.toISOString().replace('T', ' ').substring(0, 19);
 
-                return ctx.reply(
-                    `✅ <b>Perpanjangan Berhasil! (Instant)</b>\n\n` +
-                    `Paket: <b>${pkgName}</b>\n` +
-                    `Status: <b>Diperpanjang (+${extendDays} Hari)</b>\n` +
-                    `Exp Baru: <b>${newEndDate}</b>\n\n` +
-                    `<i>Poin Anda telah dipotong ${requiredPoints} poin. Tidak perlu invite ulang.</i>`,
-                    { parse_mode: "HTML" }
-                );
+                while (attempts < 5 && !success) {
+                    attempts++;
+                    try {
+                        console.log(`🔄 Attempt ${attempts}: Updating sub ${activeSub.id} to ${newEndDateStr}`);
+
+                        await sql(
+                            `UPDATE subscriptions SET end_date = ? WHERE id = ?`,
+                            [newEndDateStr, activeSub.id]
+                        );
+
+                        // Verify by Reading Back
+                        const verifyRes = await sql("SELECT end_date FROM subscriptions WHERE id = ?", [activeSub.id]);
+                        if (verifyRes.rows.length > 0) {
+                            const dbDate = verifyRes.rows[0].end_date as string;
+                            // Compare: The DB might return it slightly differently?
+                            // Just check if it is > oldEndDate by margin
+                            const checkDate = new Date(dbDate.includes('T') ? dbDate : dbDate.replace(' ', 'T') + 'Z');
+
+                            if (checkDate.getTime() > oldEndDate.getTime() + 1000) { // Check if it moved forward
+                                success = true;
+                                finalExpiryStr = checkDate.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long' });
+                            }
+                        }
+
+                        if (!success) await new Promise(r => setTimeout(r, 1000)); // Delay 1s
+
+                    } catch (e) {
+                        console.error(`Attempt ${attempts} failed:`, e);
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                }
+
+                // 3. Delete Loading Msg
+                try { await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id); } catch (e) { }
+
+                if (success) {
+                    return ctx.reply(
+                        `✅ <b>Perpanjangan Berhasil!</b>\n\n` +
+                        `Paket: <b>${pkgName}</b>\n` +
+                        `Email: <code>${savedEmail}</code>\n` +
+                        `Status: <b>Diperpanjang (+${extendDays} Hari)</b>\n` +
+                        `Exp Baru: <b>${finalExpiryStr}</b>\n\n` +
+                        `<i>Poin Anda telah dipotong ${requiredPoints} poin. Tidak perlu invite ulang.</i>`,
+                        { parse_mode: "HTML" }
+                    );
+                } else {
+                    // GAGAL 5x -> REFUND POIN
+                    if (pointsDeducted) {
+                        await sql("UPDATE users SET referral_points = referral_points + ? WHERE id = ?", [requiredPoints, userId]);
+                        return ctx.reply(
+                            `❌ <b>Perpanjangan Gagal!</b>\n\n` +
+                            `Sistem gagal memperbarui data setelah 5x percobaan (Koneksi Database Timeout).\n` +
+                            `✅ <b>${requiredPoints} Poin Anda telah dikembalikan.</b>\n\n` +
+                            `Silakan coba lagi beberapa saat lagi.`,
+                            { parse_mode: "HTML" }
+                        );
+                    } else {
+                        return ctx.reply("❌ <b>Gagal System!</b>\nSilakan hubungi Admin.", { parse_mode: "HTML" });
+                    }
+                }
             }
 
-            // A.3 User Baru / Tidak Aktif -> Lanjut ke Queue (Potong Poin Dulu)
+            // A.3 User Baru / Admin New Email -> Lanjut ke Queue (Potong Poin Dulu)
             if (!isAdmin(userId)) {
                 await sql("UPDATE users SET referral_points = referral_points - ? WHERE id = ?", [requiredPoints, userId]);
             }
@@ -693,7 +795,7 @@ bot.command("aktivasi", async (ctx) => {
         // 3. Simpan Email & Masukkan Antrian Invite
         await sql(
             `UPDATE users SET email = ?, status = 'pending_invite' WHERE id = ?`,
-            [email, userId]
+            [emailInput, userId]
         );
 
         // 4. Trigger Action
@@ -701,8 +803,8 @@ bot.command("aktivasi", async (ctx) => {
 
         const sentMsg = await ctx.reply(
             `✅ <b>Permintaan Diterima!</b>\n\n` +
-            `Email: <code>${email}</code>\n` +
-            `Paket: <b>${selectedProd === 3 ? "6 Bulan Premium" : "1 Bulan Free"}</b>\n` +
+            `Email: <code>${emailInput}</code>\n` +
+            `Paket: <b>${selectedProd === 3 ? "6 Bulan Premium" : (selectedProd === 4 ? "12 Bulan (Stack)" : "1 Bulan Free")}</b>\n` +
             `Status: <b>Masuk Antrian Invite</b>\n\n` +
             `Bot akan mengirim notifikasi saat invite berhasil dikirim (est. 1-5 menit).`,
             { parse_mode: "HTML" }
@@ -714,6 +816,42 @@ bot.command("aktivasi", async (ctx) => {
     } catch (error: any) {
         await ctx.reply(`❌ Error System: ${error.message}`);
     }
+}
+
+// User Command: Aktivasi (User Submit Email)
+bot.command("aktivasi", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    const input = ctx.match; // Text after command
+
+    // Interactive Mode (No Input)
+    if (!input) {
+        // Cek apakah punya email tersimpan
+        const userRes = await sql("SELECT email FROM users WHERE id = ?", [userId]);
+        const savedEmail = userRes.rows.length > 0 ? userRes.rows[0].email : null;
+
+        const keyboard = new InlineKeyboard();
+        let msg = `🎁 <b>Konfirmasi Aktivasi</b>\n\n`;
+
+        if (savedEmail) {
+            msg += `Anda punya email tersimpan: <b>${savedEmail}</b>\nIngin memperpanjang akun ini?`;
+            keyboard.text(`🔄 Perpanjang: ${savedEmail}`, "act_extend").row();
+            keyboard.text("➕ Pakai Email Baru", "act_new_email");
+        } else {
+            msg += `Silakan masukkan email yang ingin diundang Canva Premium.`;
+            keyboard.text("📧 Input Email Manual", "act_new_email");
+        }
+
+        return ctx.reply(msg, { reply_markup: keyboard, parse_mode: "HTML" });
+    }
+
+    // Manual Input Mode
+    if (!input.includes("@")) {
+        return ctx.reply("⚠️ <b>Format Salah!</b>\nContoh: <code>/aktivasi emailmu@gmail.com</code>", { parse_mode: "HTML" });
+    }
+
+    await handleActivation(ctx, input.trim());
 });
 
 // Admin Command: Help Cookie
