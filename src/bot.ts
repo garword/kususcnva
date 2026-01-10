@@ -851,22 +851,64 @@ bot.command("delete_email", async (ctx) => {
 // ============================================================
 
 bot.hears("🎁 Menu Paket", async (ctx) => {
-    // Menu Varian Paket
+    // Menu Varian Paket dengan Quantity Selector
+    // Default Qty = 1
+    const qty = 1;
+    const points = 6 * qty;
+
     const keyboard = new InlineKeyboard()
         .text("🌟 1 Bulan (Free)", "buy_1_month").row()
-        .text("💎 6 Bulan (6 Poin)", "buy_6_month").row();
+        .text("➖", "pkg_qty_dec_1") // Payload: current qty to dec (min 1)
+        .text(`📦 1 Akun (6 Bln)`, "noop")
+        .text("➕", "pkg_qty_inc_1").row() // Payload: current qty to inc (max 2)
+        .text(`💎 Beli 6 Bulan (${points} Poin)`, `buy_6_month_${qty}`).row();
 
     await ctx.reply(
         `<b>🎁 Pilih Paket Canva</b>\n\n` +
         `1. <b>1 Bulan Free</b>\n` +
         `   - Gratis tanpa syarat invite.\n` +
-        `   - Hanya bisa 1x klaim (harus tunggu expired).\n\n` +
+        `   - Hanya bisa 1x klaim.\n\n` +
         `2. <b>6 Bulan Premium</b>\n` +
-        `   - Syarat: Undang 6 Teman.\n` +
-        `   - Durasi lebih lama.\n\n` +
-        `Silakan pilih varian di bawah:`,
+        `   - Syarat: 6 Poin / Akun.\n` +
+        `   - <b>Bisa ditumpuk!</b> (Maks 2x = 1 Tahun)\n` +
+        `   - Gunakan tombol +/- untuk atur jumlah.\n\n` +
+        `Silakan atur pesanan di bawah:`,
         { reply_markup: keyboard, parse_mode: "HTML" }
     );
+});
+
+// Handler untuk Quantity Buttons
+bot.callbackQuery(/^pkg_qty_(inc|dec)_(\d+)$/, async (ctx) => {
+    const action = ctx.match[1];
+    const currentQty = parseInt(ctx.match[2]);
+    let newQty = currentQty;
+
+    if (action === "inc") {
+        if (currentQty < 2) newQty++;
+    } else {
+        if (currentQty > 1) newQty--;
+    }
+
+    // Jika tidak berubah, answer saja
+    if (newQty === currentQty) return ctx.answerCallbackQuery(action === "inc" ? "Maksimal 2x" : "Minimal 1x");
+
+    const points = 6 * newQty;
+    const label = newQty === 1 ? "1 Akun (6 Bln)" : "2 Akun (12 Bln)";
+
+    // Rebuild Keyboard
+    const keyboard = new InlineKeyboard()
+        .text("🌟 1 Bulan (Free)", "buy_1_month").row()
+        .text("➖", `pkg_qty_dec_${newQty}`)
+        .text(`📦 ${label}`, "noop")
+        .text("➕", `pkg_qty_inc_${newQty}`).row()
+        .text(`💎 Beli ${label} (${points} Poin)`, `buy_6_month_${newQty}`).row();
+
+    await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
+    await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("noop", async (ctx) => {
+    await ctx.answerCallbackQuery();
 });
 
 bot.hears("👤 Profil Saya", async (ctx) => {
@@ -1339,10 +1381,14 @@ bot.callbackQuery(/buy_(.+)/, async (ctx) => {
         let costCost = 0;
         let productName = "";
 
-        if (item === "6_month") {
+        if (item === "6_month_1" || item === "6_month") { // Fallback for legacy
             productId = 3; // 6 Bulan
             costCost = 6;
             productName = "6 Bulan Premium";
+        } else if (item === "6_month_2") {
+            productId = 4; // 12 Bulan (New)
+            costCost = 12;
+            productName = "12 Bulan Premium (2x)";
         } else if (item === "1_month") {
             productId = 1;
             costCost = 0;
