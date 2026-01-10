@@ -300,58 +300,34 @@ async function revokeStaleInvites() {
                         } else {
                             console.warn("      ❌ Could not find Confirmation Button (Modal).");
                         }
-                    } else {
-                        console.warn("      ❌ Could not find Remove Button (Toolbar).");
-                    }
-
-                    // Confirm Modal "Remove from team"
-                    const confirmBtn = await page.evaluateHandle(() => {
-                        const spans = Array.from(document.querySelectorAll('span'));
-                        // Check english and indonesian
-                        const target = spans.find(s =>
-                            s.textContent?.includes('Remove from team') ||
-                            s.textContent?.includes('Hapus dari tim')
-                        );
-                        return target ? target.parentElement : null;
-                    });
-
-                    if (confirmBtn) {
-                        await (confirmBtn as any).click();
-                        console.log("      ✅ Confirmed Removal.");
-                        revokedCount++;
                         await sendTelegram(`♻️ <b>Stale Invite Revoked</b>\nUser: ${targetName}\nReason: > 1 Hour Pending`);
 
                         // Optional: Update DB status to 'revoked' or 'deleted'
                         await sql("UPDATE users SET status = 'revoked' WHERE email = ?", [targetName]); // assuming name=email match
                     } else {
-                        console.log("      ⚠️ Configure button not found.");
+                        console.warn("      ❌ Could not find Remove Button (Toolbar).");
                     }
                 } else {
-                    console.log("      ⚠️ Remove header button not found (Maybe multiple selected? or lost focus)");
+                    console.log("      ⚠️ Row not found/clickable.");
                 }
 
                 // Uncheck if failed? Or page refresh?
-                // Safe to reload if bulk logic is complex, but one by one is fine.
-                // If successful, the row disappears.
                 await randomDelay(2000, 3000);
 
-            } else {
-                console.log("      ⚠️ Row not found/clickable.");
+            } catch (err: any) {
+                console.error(`      ❌ Failed to revoke ${targetName}: ${err.message}`);
             }
-
-        } catch (err: any) {
-            console.error(`      ❌ Failed to revoke ${targetName}: ${err.message}`);
         }
-    }
+
 
         console.log(`🏁 Cleanup Complete. Revoked: ${revokedCount}`);
 
-} catch (e: any) {
-    console.error("Critical Error:", e);
-    await page.screenshot({ path: 'error_revoke_stale.jpg' });
-} finally {
-    setTimeout(() => browser.close(), 5000);
-}
+    } catch (e: any) {
+        console.error("Critical Error:", e);
+        await page.screenshot({ path: 'error_revoke_stale.jpg' });
+    } finally {
+        setTimeout(() => browser.close(), 5000);
+    }
 }
 
 revokeStaleInvites();
