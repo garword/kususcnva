@@ -691,7 +691,7 @@ async function handleActivation(ctx: any, emailInput: string) {
                 }
 
                 // 2. Retry Loop (Max 5x)
-                const extendDays = selectedProd === 4 ? 360 : 180;
+                // const extendDays = selectedProd === 4 ? 360 : 180; // Already declared above
                 let success = false;
                 let finalExpiryStr = "";
                 let attempts = 0;
