@@ -794,6 +794,54 @@ bot.command("broadcast", async (ctx) => {
     }
 });
 
+// Admin Command: Add Points Manual
+bot.command("addpoint", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const input = ctx.match;
+    if (!input || !input.includes("|")) {
+        return ctx.reply("⚠️ <b>Format Salah!</b>\nContoh: <code>/addpoint 12345678|10</code>\n(ID Telegram | Jumlah Poin)", { parse_mode: "HTML" });
+    }
+
+    const [targetIdStr, amountStr] = input.split("|");
+    const targetId = parseInt(targetIdStr.trim());
+    const amount = parseInt(amountStr.trim());
+
+    if (isNaN(targetId) || isNaN(amount)) {
+        return ctx.reply("⚠️ ID atau Jumlah Poin harus angka.");
+    }
+
+    try {
+        // Check if user exists
+        const userCheck = await sql("SELECT id FROM users WHERE id = ?", [targetId]);
+        if (userCheck.rows.length === 0) {
+            return ctx.reply("❌ User ID tidak ditemukan di database.");
+        }
+
+        // Update Points
+        await sql("UPDATE users SET referral_points = referral_points + ? WHERE id = ?", [amount, targetId]);
+
+        // Notify Admin
+        await ctx.reply(`✅ <b>Berhasil!</b>\nUser ID: <code>${targetId}</code>\nDitambah: <b>${amount} Poin</b>`, { parse_mode: "HTML" });
+
+        // Notify User
+        try {
+            await ctx.api.sendMessage(
+                targetId,
+                `🎉 <b>Selamat! Poin Ditambahkan</b>\n\n` +
+                `Admin telah menambahkan <b>${amount} Poin</b> ke akun Anda.\n` +
+                `Gunakan poin untuk menukarkan paket Premium! 🎁`,
+                { parse_mode: "HTML" }
+            );
+        } catch (e) {
+            await ctx.reply("⚠️ Poin masuk, tapi gagal kirim notif ke user (User memblokir bot?).");
+        }
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
+});
+
 // DELETE USER (Hard Delete) - Admin Only
 bot.command("delete_user", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
