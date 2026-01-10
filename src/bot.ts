@@ -1148,7 +1148,7 @@ bot.hears("👤 Profil Saya", async (ctx) => {
         if (diffDays > 35) {
             plan = `Premium (±${Math.round(diffDays / 30)} Bulan)`;
         } else {
-            plan = sub.plan_name; // Fallback to DB name for short term
+            plan = (sub.plan_name as string) || "-"; // Fallback to DB name for short term
         }
     }
     const points = user.referral_points || 0;
