@@ -138,6 +138,7 @@ bot.hears("📖 Panduan", async (ctx) => {
             `• <b>/admin</b> - Buka panel admin super.\n` +
             `• <b>/data</b> - Export laporan user (.txt).\n` +
             `• <b>/set_cookie [json]</b> - Set cookie Canva baru.\n` +
+            `• <b>/cekcookie</b> - Cek isi cookie aktif di DB.\n` +
             `• <b>/test_invite [email]</b> - Tes invite manual.\n` +
             `• <b>/broadcast [pesan]</b> - Kirim pesan ke semua user.\n` +
             `• <b>/delete_user [email/id]</b> - Hapus user permanent.\n` +
@@ -1021,9 +1022,65 @@ bot.callbackQuery("adm_cookie", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
     const val = cookieRes.rows.length > 0 ? "✅ Tersimpan" : "❌ Kosong";
-    await ctx.reply(`🍪 <b>Status Cookie:</b> ${val}\n\nCara ubah: Kirim file JSON cookie dengan caption <code>/set_cookie</code> atau ketik <code>/set_cookie [VALUE]</code>`, { parse_mode: "HTML" });
+
+    // Submenu Cookie
+    const cookieKeyboard = new InlineKeyboard()
+        .text("👁️ Cek Isi Cookie", "adm_view_cookie").row()
+        .text("🔙 Kembali", "adm_back_main");
+
+    await ctx.reply(
+        `🍪 <b>Status Cookie:</b> ${val}\n\n` +
+        `Menu Manajemen Cookie:\n` +
+        `1. <b>Set Baru:</b> Kirim file .json dengan caption <code>/set_cookie</code>\n` +
+        `2. <b>Cek Isi:</b> Tekan tombol di bawah atau ketik <code>/cekcookie</code>`,
+        { parse_mode: "HTML", reply_markup: cookieKeyboard }
+    );
     await ctx.answerCallbackQuery();
 });
+
+bot.callbackQuery("adm_view_cookie", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await showCookieInfo(ctx);
+    await ctx.answerCallbackQuery();
+});
+
+// Command: Cek Cookie
+bot.command("cekcookie", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+    await showCookieInfo(ctx);
+});
+
+async function showCookieInfo(ctx: any) {
+    try {
+        const res = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+        if (res.rows.length === 0) {
+            return ctx.reply("❌ <b>Cookie Kosong!</b>\nDatabase belum menyimpan cookie apapun.", { parse_mode: "HTML" });
+        }
+
+        const cookieRaw = res.rows[0].value as string;
+        let preview = "";
+
+        // Coba parsing sedikit untuk info
+        try {
+            // Jika JSON
+            const json = JSON.parse(cookieRaw);
+            preview = `<b>Format:</b> JSON Array\n<b>Jumlah:</b> ${json.length} items\n\n`;
+            preview += `<b>Preview Raw:</b>\n<pre>${cookieRaw.substring(0, 100)}...</pre>`;
+        } catch {
+            // Jika String
+            preview = `<b>Format:</b> Raw String\n\n`;
+            preview += `<b>Preview Raw:</b>\n<pre>${cookieRaw.substring(0, 100)}...</pre>`;
+        }
+
+        await ctx.reply(
+            `🍪 <b>Detail Cookie Database:</b>\n\n${preview}\n\n` +
+            `<i>(Cookie terlalu panjang untuk ditampilkan semua. Gunakan Export Data jika butuh full backup)</i>`,
+            { parse_mode: "HTML" }
+        );
+    } catch (e: any) {
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
+}
 
 // Helper: Get Next Slot String
 async function getNextSlotInfo(): Promise<string> {
