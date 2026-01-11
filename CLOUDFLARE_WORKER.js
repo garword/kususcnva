@@ -18,41 +18,58 @@ export default {
 
     // 2. Jika dijalankan otomatis oleh Cron Cloudflare (Scheduled)
     async scheduled(event, env, ctx) {
-        // GANTI URL INI
+        // --- 1. CONFIGURATION ---
+        const GITHUB_OWNER = 'garword';
+        const GITHUB_REPO = 'kususcnva';
+        const GITHUB_TOKEN = env.GH_PAT; // WAJIB DISET DI CLOUDFLARE ENV!
+
+        // --- 2. TRIGGER GITHUB ACTION ---
+        console.log(`[Cron] Triggering GitHub Action: process_queue...`);
+
+        const ghUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`;
+        const ghPayload = {
+            event_type: "process_queue",
+            client_payload: {
+                timestamp: new Date().toISOString(),
+                source: "cloudflare_worker"
+            }
+        };
+
+        const triggerGithub = fetch(ghUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'Cloudflare-Worker-Cron'
+            },
+            body: JSON.stringify(ghPayload)
+        })
+            .then(async res => {
+                if (res.ok) console.log("[Cron] ✅ GitHub Action Triggered Successfully!");
+                else console.error(`[Cron] ❌ Failed to trigger GH: ${res.status} ${await res.text()}`);
+            })
+            .catch(e => console.error("[Cron] ❌ Error triggering GH:", e));
+
+        ctx.waitUntil(triggerGithub);
+
+        // --- 3. PING VERCEL (KEEP ALIVE) ---
+        // Optional: Tetap jalankan ping ke Vercel agar "panas"
         const targetUrl = 'https://kususcnva.vercel.app/api/ping';
-        const cronUrl = 'https://kususcnva.vercel.app/api/cron';
 
-        // 0. Trigger Cron Check (Async) - Cek Expired & Kick
-        ctx.waitUntil(fetch(cronUrl).catch(e => console.error("Cron failed:", e)));
+        // Burst Ping (Simulate traffic)
+        const loopCount = 4; // Dikurangi agar tidak overload worker time
+        const delayMs = 5000;
 
-        // Cloudflare Cron minimal 1 menit. 
-        // Agar interval terasa seperti ~5 detik, kita lakukan "Burst Ping" (Looping) di sini.
-        // Note: Worker Free Tier dibatasi durasi ~30 detik. Kita set 5-6x ping.
-
-        const loopCount = 6;
-        const delayMs = 5000; // 5 detik
-
-        // Helper: Format Jam WIB
-        const nowWIB = () => new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
-
-        console.log(`[${nowWIB()}] ⏰ Cron Triggered: Starting Burst Ping (${loopCount}x per min)...`);
-
-        // Gunakan ctx.waitUntil agar worker tidak dimatikan paksa saat sleep
         ctx.waitUntil((async () => {
             for (let i = 1; i <= loopCount; i++) {
                 try {
-                    const resp = await fetch(targetUrl);
-                    console.log(`[${nowWIB()}]    📡 Ping #${i}: Status ${resp.status}`);
+                    await fetch(targetUrl);
+                    console.log(`[Ping] #${i} Sent.`);
                 } catch (e) {
-                    console.error(`[${nowWIB()}]    ❌ Ping #${i} Error: ${e.message}`);
+                    console.error(`[Ping] Error: ${e.message}`);
                 }
-
-                // Delay 5 detik (kecuali running terakhir)
-                if (i < loopCount) {
-                    await new Promise(r => setTimeout(r, delayMs));
-                }
+                if (i < loopCount) await new Promise(r => setTimeout(r, delayMs));
             }
-            console.log(`[${nowWIB()}] ✅ Burst Ping Finished.`);
         })());
     }
 };

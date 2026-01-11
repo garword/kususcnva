@@ -2,7 +2,7 @@ name: Maintenance (Revoke, Invite, Kick, Sync)
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Runs every hour (Hemat kuota free tier)
+    # - cron: '0 * * * *'  # Disabled: Controlled by Cloudflare Worker
   repository_dispatch:
     types: [process_queue] # Triggered by Bot API
   workflow_dispatch:      # Manual trigger
