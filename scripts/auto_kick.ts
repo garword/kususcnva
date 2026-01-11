@@ -127,26 +127,9 @@ async function kickEnforcer() {
     try {
         const page = await browser.newPage();
 
-
         // Restore Session
-        // 1. Try DB User-Agent first (Matches sync_member_count usage)
-        try {
-            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
-            if (uaRes.rows.length > 0) {
-                const ua = uaRes.rows[0].value as string;
-                await page.setUserAgent(ua);
-                console.log(`   📱 User-Agent set from DB: ${ua.substring(0, 30)}...`);
-                // Update local file for fallback
-                fs.writeFileSync('auth_user_agent.txt', ua);
-            } else if (fs.existsSync('auth_user_agent.txt')) {
-                // Fallback to file
-                await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim());
-            }
-        } catch (e) {
-            // Fallback if DB fails
-            if (fs.existsSync('auth_user_agent.txt')) {
-                await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim());
-            }
+        if (fs.existsSync('auth_user_agent.txt')) {
+            try { await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim()); } catch (e) { }
         }
 
         // ENABLE CONSOLE LOGS FROM BROWSER
@@ -183,29 +166,34 @@ async function kickEnforcer() {
         }
 
         // 3. SCROLL LOADER (The "Heavy" Lift)
-        // 3. SCROLL LOADER (The "Heavy" Lift)
-        console.log(`   📍 Current URL: ${page.url()}`);
-        console.log("   📜 Scrolling to load ALL members (Force Mode)...");
+        console.log("   📜 Scrolling to load ALL members...");
         await page.evaluate(async () => {
             await new Promise<void>((resolve) => {
                 let totalHeight = 0;
                 const distance = 100;
-
-                // Force scroll for specific amount or until very high limit
+                let noScrollCount = 0;
                 const timer = setInterval(() => {
+                    const scrollHeightBefore = (document as any).body.scrollHeight;
                     (window as any).scrollBy(0, distance);
                     totalHeight += distance;
 
-                    // Safety break
+                    if (((window as any).innerHeight + (window as any).scrollY) >= scrollHeightBefore - 50) {
+                        noScrollCount++;
+                        // Increase patience: Wait 100 * 50ms = 5s (was 2.5s)
+                        if (noScrollCount > 100) {
+                            clearInterval(timer);
+                            resolve();
+                        }
+                    } else {
+                        noScrollCount = 0;
+                    }
+
+                    // Safety break: Increase to 200,000px (approx 4000 members)
                     if (totalHeight >= 200000) { clearInterval(timer); resolve(); }
-
                 }, 50);
-
-                // FORCE RESOLVE after 20 seconds (Matches 'Sync' reliability)
-                setTimeout(() => { clearInterval(timer); resolve(); }, 20000);
             });
         });
-        await randomDelay(5000, 8000); // Wait for DOM to settle
+        await randomDelay(2000, 3000);
         console.log("   ✅ Scroll Complete.");
 
         // 4. SCAN & SELECT (The "Brain")
@@ -220,7 +208,6 @@ async function kickEnforcer() {
 
             // Find all rows (tr or div[role="row"])
             const rows = Array.from(document.querySelectorAll('tbody tr, div[role="row"]'));
-            console.log(`   📊 Debug: Found ${rows.length} total rows in DOM.`);
             let selectedCount = 0;
 
             rows.forEach(row => {
