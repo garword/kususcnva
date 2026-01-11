@@ -6,6 +6,7 @@ import { sql } from '../lib/db';
 import * as dotenv from 'dotenv';
 import axios from 'axios';
 import fs from 'fs';
+import { TimeUtils } from '../src/lib/time';
 
 dotenv.config();
 
@@ -53,7 +54,7 @@ async function sendTelegram(message: string) {
 }
 
 async function revokeStaleInvites() {
-    console.log("🧹 Starting Stale Invite Cleanup Job...");
+    console.log(`[${TimeUtils.format()}] 🧹 Starting Stale Invite Cleanup Job...`);
 
     // 1. Get Stale Users from DB (> 1 hour old)
     // We only care about users created > 1 hour ago. 
@@ -61,7 +62,7 @@ async function revokeStaleInvites() {
     const staleThreshold = await sql("SELECT datetime('now', '-1 hour') as threshold");
     const utcDate = new Date(staleThreshold.rows[0].threshold + "Z"); // Treat as UTC
     const wibTime = utcDate.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false });
-    console.log(`🕒 Threshold Time: ${wibTime} WIB`);
+    console.log(`[${TimeUtils.format()}] 🕒 Threshold Time: ${wibTime} WIB`);
 
     const staleDBUsers = await sql(`
         SELECT * FROM users 
@@ -74,10 +75,11 @@ async function revokeStaleInvites() {
     // The "Email" column says "Invited".
     // So we match the Canva "Name" against our DB "email".
     const staleEmailSet = new Set(staleDBUsers.rows.map((u: any) => (u.email || "").toLowerCase().trim()));
-    console.log(`📋 Found ${staleDBUsers.rows.length} potential stale users in DB.`);
+    console.log(`[${TimeUtils.format()}] 📋 Found ${staleDBUsers.rows.length} potential stale users in DB.`);
 
     if (staleDBUsers.rows.length === 0) {
-        console.log("✅ No old users in DB to check.");
+        console.log(`[${TimeUtils.format()}] ✅ No old users in DB to check.`);
+        // await sendTelegram("✅ <b>Stale Invite Check:</b> Clean (No pending > 1h)."); // Uncomment if verbose logging is desired
         return;
     }
 

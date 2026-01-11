@@ -74,8 +74,19 @@ async function kickEnforcer() {
 
     console.log(`📊 DB Stats: ${whiteList.size} Active, ${blackList.size} Expired, ${safetyList.size} Admins/Safe.`);
 
-    // 1.5. RESTORE SESSION FROM ENV
-    if (process.env.CANVA_COOKIES) fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
+    // 1.5. RESTORE SESSION FROM DB (Prioritize DB over Env/File)
+    // This bridges the gap between Bot /set_cookie and this Script
+    try {
+        const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookies'");
+        if (cookieRes.rows.length > 0) {
+            console.log("   📥 Fetched fresh cookies from Database.");
+            fs.writeFileSync('auth_cookies.json', cookieRes.rows[0].value as string);
+        }
+    } catch (e) { console.warn("   ⚠️ Failed to fetch DB cookies, using local/env."); }
+
+    if (process.env.CANVA_COOKIES && !fs.existsSync('auth_cookies.json')) {
+        fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
+    }
     if (process.env.CANVA_USER_AGENT) fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
 
     // 2. Launch Browser
@@ -289,7 +300,8 @@ async function kickEnforcer() {
             }
 
         } else {
-            console.log("   ✅ No targets found. Team is Clean.");
+            console.log(`[${TimeUtils.format()}] ✅ No targets found. Team is Clean.`);
+            // await sendTelegram("🛡️ <b>Auto-Kick Check:</b> Clean (No illegal members)."); // Uncomment for verbose logs
         }
 
     } catch (e: any) {
