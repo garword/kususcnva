@@ -208,6 +208,7 @@ async function kickEnforcer() {
 
             // Find all rows (tr or div[role="row"])
             const rows = Array.from(document.querySelectorAll('tbody tr, div[role="row"]'));
+            console.log(`   📊 Debug: Found ${rows.length} total rows in DOM.`);
             let selectedCount = 0;
 
             rows.forEach(row => {
