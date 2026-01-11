@@ -2,9 +2,11 @@ import { sql } from "../lib/db";
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
+import { TimeUtils } from "../src/lib/time";
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
-        console.log("🕒 CRON: Checking for expired subscriptions...");
+        console.log(`[${TimeUtils.format()}] 🕒 CRON: Checking for expired subscriptions...`);
 
         // 1. Check for Expired Subs (Active & Past End Date)
         const result = await sql(`

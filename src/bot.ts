@@ -731,7 +731,7 @@ async function handleActivation(ctx: any, emailInput: string) {
 
                             if (checkDate.getTime() > oldEndDate.getTime() + 1000) { // Check if it moved forward
                                 success = true;
-                                finalExpiryStr = checkDate.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long' });
+                                finalExpiryStr = TimeUtils.format(checkDate);
                             }
                         }
 
@@ -788,7 +788,10 @@ async function handleActivation(ctx: any, emailInput: string) {
         else {
             // B.1 Strict Check: Tidak boleh ambil jika masih aktif
             if (activeSub && !isAdmin(userId)) {
-                const expDate = new Date(activeSub.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium' });
+                // Ensure correct UTC parsing for DB string
+                const dbDate = activeSub.end_date as string;
+                const utcDate = new Date(dbDate.includes('T') ? dbDate : dbDate.replace(' ', 'T') + 'Z');
+                const expDate = TimeUtils.format(utcDate);
                 return ctx.reply(
                     `⛔ <b>Akses Ditolak!</b>\n\n` +
                     `Anda masih memiliki paket aktif sampai <b>${expDate}</b>.\n\n` +
@@ -1759,20 +1762,12 @@ bot.command("data", async (ctx) => {
         }
 
         // 2. Format Header & Content
-        const now = new Date();
-        const nowJakarta = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-
-        const day = String(nowJakarta.getDate()).padStart(2, '0');
-        const month = String(nowJakarta.getMonth() + 1).padStart(2, '0');
-        const year = nowJakarta.getFullYear();
-        const hour = String(nowJakarta.getHours()).padStart(2, '0');
-        const minute = String(nowJakarta.getMinutes()).padStart(2, '0');
-
-        const dateStr = `${day}-${month}-${year}_${hour}${minute}`;
-        const fileName = `data-${dateStr}.txt`;
+        // 2. Format Header & Content
+        const nowStr = TimeUtils.format(); // "DD:MM:YYYY HH:mm:ss WIB"
+        const fileName = `data-${nowStr.replace(/[: ]/g, '-').replace('WIB', '').trim()}.txt`;
 
         let content = `LAPORAN DATA BOT CANVA\n`;
-        content += `Tanggal Generate: ${nowJakarta.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }).replace(/\./g, ':')}\n`;
+        content += `Tanggal Generate: ${nowStr}\n`;
         content += `Total User: ${res.rows.length}\n`;
         content += `==========================================================================================================================================================================\n`;
         // Widen Date columns to 22 chars for "dd/mm/yyyy HH:mm:ss"
@@ -1787,37 +1782,21 @@ bot.command("data", async (ctx) => {
             const plan = String(row.plan_name || (row.sub_status === 'active' ? 'Active' : '-')).padEnd(15);
 
             // Format End Date to WIB (Full Precision)
-            const expDateRaw = row.end_date ? new Date(row.end_date as string) : null;
             let expDate = "-                     "; // 22 spaces
-            if (expDateRaw) {
-                const jktDate = new Date(expDateRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-                const y = jktDate.getFullYear();
-                const m = String(jktDate.getMonth() + 1).padStart(2, '0');
-                const d = String(jktDate.getDate()).padStart(2, '0');
-                const H = String(jktDate.getHours()).padStart(2, '0');
-                const M = String(jktDate.getMinutes()).padStart(2, '0');
-                const S = String(jktDate.getSeconds()).padStart(2, '0');
-                expDate = `${d}/${m}/${y} ${H}:${M}:${S}`.padEnd(22); // Reordered to dd/mm/yyyy
-            } else {
-                expDate = expDate.padEnd(22);
+            if (row.end_date) {
+                const dbDate = row.end_date as string;
+                const utcDate = new Date(dbDate.includes('T') ? dbDate : dbDate.replace(' ', 'T') + 'Z');
+                expDate = TimeUtils.format(utcDate).replace(' WIB', '').padEnd(22);
             }
 
             const points = String(row.referral_points || 0).padEnd(5);
 
-            // Format Join Date to WIB (Full Precision)
-            let joinDate = "-                     "; // 22 spaces
+            // Format Join Date to WIB
+            let joinDate = "-                     ";
             if (row.joined_at) {
-                const joinRaw = new Date(row.joined_at as string);
-                const jktJoin = new Date(joinRaw.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-                const y = jktJoin.getFullYear();
-                const m = String(jktJoin.getMonth() + 1).padStart(2, '0');
-                const d = String(jktJoin.getDate()).padStart(2, '0');
-                const H = String(jktJoin.getHours()).padStart(2, '0');
-                const M = String(jktJoin.getMinutes()).padStart(2, '0');
-                const S = String(jktJoin.getSeconds()).padStart(2, '0');
-                joinDate = `${d}/${m}/${y} ${H}:${M}:${S}`.padEnd(22);
-            } else {
-                joinDate = joinDate.padEnd(22);
+                const dbJoin = row.joined_at as string;
+                const utcJoin = new Date(dbJoin.includes('T') ? dbJoin : dbJoin.replace(' ', 'T') + 'Z');
+                joinDate = TimeUtils.format(utcJoin).replace(' WIB', '').padEnd(22);
             }
 
             content += `${id} | ${username} | ${name} | ${email} | ${plan} | ${expDate} | ${points} | ${joinDate}\n`;
@@ -1833,7 +1812,7 @@ bot.command("data", async (ctx) => {
         const inputFile = new InputFile(buffer, fileName);
 
         await ctx.replyWithDocument(inputFile, {
-            caption: `📊 <b>Laporan Data User</b>\n📅 Tanggal: ${dateStr}\n👤 Total: ${res.rows.length} User`,
+            caption: `📊 <b>Laporan Data User</b>\n📅 Tanggal: ${nowStr}\n👤 Total: ${res.rows.length} User`,
             parse_mode: "HTML"
         });
 

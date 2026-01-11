@@ -9,15 +9,13 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Setup Puppeteer Extra with Stealth
+// Setup Puppeteer
 const puppeteer = addExtra(puppeteerCore as any);
 puppeteer.use(StealthPlugin());
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const ADMIN_ID = process.env.ADMIN_ID || '';
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || process.env.ADMIN_CHANNEL_ID || '';
-
-// Credentials
 const CANVA_EMAIL = process.env.CANVA_EMAIL;
 const CANVA_PASSWORD = process.env.CANVA_PASSWORD;
 
@@ -35,7 +33,6 @@ const findChromeParams = [
 
 function getChromePath() {
     if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
-    // Don't re-import fs, use the top level one
     for (const path of findChromeParams) {
         try { if (fs.existsSync(path)) return path; } catch (e) { continue; }
     }
@@ -56,56 +53,30 @@ async function sendTelegram(message: string) {
     }
 }
 
-async function humanType(element: any, text: string) {
-    await element.click();
-    await randomDelay(300, 600);
-    for (const char of text) {
-        await element.type(char, { delay: Math.random() * 100 + 50 });
-        if (Math.random() < 0.1) await randomDelay(200, 400);
-    }
-}
+async function kickEnforcer() {
+    console.log("👮 Auto-Kick ENFORCER Mode Started...");
 
-async function kickExpiredUsers() {
-    console.log("🤖 Auto-Kick Job Started (v2.0 - CookieAuth)...");
+    // 0. Prepare Memory Lists
+    const activeSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'`);
+    const expiredSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'expired'`);
 
-    // 0. Check for Manual Target
-    const args = process.argv.slice(2);
-    const manualTarget = args.find(a => a.includes('@')); // Simple detection: any arg with '@' is treated as email
+    // Safety List: Admins + Bot Account + Manual Whitelist (if any)
+    const adminRes = await sql(`SELECT email FROM users WHERE role = 'admin'`);
+    const safetyList = new Set([
+        ...(process.env.CANVA_EMAIL ? [process.env.CANVA_EMAIL.toLowerCase()] : []),
+        ...adminRes.rows.map((r: any) => (r.email || "").toLowerCase())
+    ]);
 
-    let targets: { email: string, id: any, sub_id: any }[] = [];
+    const whiteList = new Set(activeSubRes.rows.map((r: any) => (r.email || "").toLowerCase()));
+    const blackList = new Set(expiredSubRes.rows.map((r: any) => (r.email || "").toLowerCase()));
 
-    if (manualTarget) {
-        console.log(`🎯 MANUAL MODE: Targeting specific user: ${manualTarget}`);
-        targets = [{ email: manualTarget, id: null, sub_id: null }];
-    } else {
-        // 1. Get Expired Users (Expiry is in subscriptions table)
-        const expiredUsers = await sql(`
-            SELECT u.email, u.id, s.id as sub_id 
-            FROM users u 
-            JOIN subscriptions s ON u.id = s.user_id 
-            WHERE s.end_date < datetime('now') 
-            AND s.status = 'active'
-        `);
+    console.log(`📊 DB Stats: ${whiteList.size} Active, ${blackList.size} Expired, ${safetyList.size} Admins/Safe.`);
 
-        if (expiredUsers.rows.length === 0) {
-            console.log("✅ No expired users found.");
-            return;
-        }
-        targets = expiredUsers.rows as any;
-        console.log(`🎯 Found ${targets.length} expired user(s) to kick.`);
-    }
+    // 1.5. RESTORE SESSION FROM ENV
+    if (process.env.CANVA_COOKIES) fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
+    if (process.env.CANVA_USER_AGENT) fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
 
-    // 1.5. RESTORE SESSION FROM ENV (FOR GITHUB ACTIONS)
-    if (process.env.CANVA_COOKIES) {
-        console.log("📂 Restoring Cookies from Env Var...");
-        fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
-    }
-    if (process.env.CANVA_USER_AGENT) {
-        console.log("📂 Restoring User-Agent from Env Var...");
-        fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
-    }
-
-    // 2. Launch Browser (Stealth + Incognito)
+    // 2. Launch Browser
     const chromePath = getChromePath();
     if (!chromePath) throw new Error("Chrome not found!");
 
@@ -113,254 +84,221 @@ async function kickExpiredUsers() {
         executablePath: chromePath,
         headless: process.env.CI ? "new" : false,
         defaultViewport: null,
-        ignoreDefaultArgs: ['--enable-automation'],
         args: [
             '--incognito',
             '--start-maximized',
             '--disable-blink-features=AutomationControlled',
-            '--disable-infobars',
-            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-notifications',
             '--timezone=Asia/Jakarta'
         ]
     });
 
     try {
-        const context = await browser.createBrowserContext();
-        const page = await context.newPage();
+        const page = await browser.newPage();
 
-        // 3. Login Flow (Cookie Priority -> Email/Password)
-        const cookieFile = 'auth_cookies.json';
-        const uaFile = 'auth_user_agent.txt';
-        let isLoggedIn = false;
-
-        // A. Load User-Agent if Valid
-        if (fs.existsSync(uaFile)) {
-            try {
-                const savedUA = fs.readFileSync(uaFile, 'utf-8').trim();
-                if (savedUA.length > 0) {
-                    await page.setUserAgent(savedUA);
-                    console.log(`🎭 User-Agent Synced with Session: ${savedUA.substring(0, 40)}...`);
-                }
-            } catch (e) {
-                console.error("   ⚠️ Failed to sync User-Agent:", e);
-            }
+        // Restore Session
+        if (fs.existsSync('auth_user_agent.txt')) {
+            try { await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim()); } catch (e) { }
         }
 
-        // B. Load Cookies
-        if (fs.existsSync(cookieFile)) {
+        let isLoggedIn = false;
+        if (fs.existsSync('auth_cookies.json')) {
             try {
-                console.log(`🍪 Found ${cookieFile}. Attempting Session Restore...`);
-                const cookiesStr = fs.readFileSync(cookieFile, 'utf-8');
-                const cookies = JSON.parse(cookiesStr);
-
+                const cookies = JSON.parse(fs.readFileSync('auth_cookies.json', 'utf-8'));
                 await page.setCookie(...cookies);
-                console.log(`   Loaded ${cookies.length} cookies.`);
+                console.log(`   🍪 Loaded ${cookies.length} cookies.`);
 
-                await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'networkidle2', timeout: 60000 });
+                // Determine Team URL
+                const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
+                const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : null;
+                const peopleUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : `https://www.canva.com/settings/people`;
+
+                await page.goto(peopleUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                 await randomDelay(2000, 3000);
 
-                if (page.url().includes('login') || page.url().includes('signup')) {
-                    console.log("   ❌ Cookie Expired. Falling back to Login...");
-                } else {
+                if (!page.url().includes('login') && !page.url().includes('signup')) {
                     console.log("   ✅ Session Restored!");
                     isLoggedIn = true;
                 }
             } catch (e) {
-                console.error("   ⚠️ Load cookie failed:", e);
+                console.error("   ⚠️ Cookie failed:", e);
             }
-        }
-
-        if (!isLoggedIn && (!CANVA_EMAIL || !CANVA_PASSWORD)) {
-            throw new Error("CANVA_EMAIL & CANVA_PASSWORD required (or valid cookies)!");
         }
 
         if (!isLoggedIn) {
-            console.log(`🔐 Logging in as ${CANVA_EMAIL}...`);
-            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
-            await randomDelay(2000, 4000);
-
-            // STEP 1: Click "Continue with email" button
-            console.log("   [1/5] Looking for 'Continue with email' button...");
-            await randomDelay(1000, 2000);
-
-            const continueWithEmailBtn = await page.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const btn = buttons.find(b => b.textContent?.includes('Continue with email') || b.textContent?.includes('Lanjutkan dengan email'));
-                if (btn) {
-                    btn.click();
-                    return true;
-                }
-                return false;
-            });
-
-            if (!continueWithEmailBtn) console.log("   'Continue with email' button not found, trying user input...");
-            await randomDelay(1200, 2500);
-
-            // STEP 2: Enter Email
-            console.log("   [2/5] Entering Email...");
-            const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 15000 });
-            if (emailInput) await humanType(emailInput, CANVA_EMAIL || "");
-
-            // STEP 3: Click "Continue"
-            console.log("   [3/5] Clicking Continue...");
-            await randomDelay(800, 1500);
-
-            const continueClicked = await page.evaluate(() => {
-                const spans = Array.from(document.querySelectorAll('span'));
-                const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue' || s.textContent?.trim() === 'Lanjutkan');
-                if (continueSpan) {
-                    const button = continueSpan.closest('button');
-                    if (button) {
-                        button.click();
-                        return true;
-                    }
-                }
-                return false;
-            });
-
-            if (!continueClicked) await emailInput?.press('Enter');
-            await randomDelay(2500, 4000); // Wait for password field transition
-
-            // STEP 4: Password
-            console.log("   [4/5] Waiting for password field...");
-            const inputSelector = 'input[type="password"], input.bCVoGQ';
-            await page.waitForSelector(inputSelector, { timeout: 15000 });
-            const passInput = await page.$(inputSelector);
-
-            if (passInput) {
-                console.log("   [4/5] Entering Password...");
-                await randomDelay(500, 1000);
-                await humanType(passInput, CANVA_PASSWORD || "");
-            } else {
-                throw new Error("Password input field not found after wait.");
-            }
-
-            // STEP 5: Click Log in
-            console.log("   [5/5] Clicking Log in...");
-            await randomDelay(1000, 2000);
-
-            const loginClicked = await page.evaluate(() => {
-                const spans = Array.from(document.querySelectorAll('span'));
-                const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in' || s.textContent?.trim() === 'Masuk');
-                if (loginSpan) {
-                    const button = loginSpan.closest('button');
-                    if (button) {
-                        button.click();
-                        return true;
-                    }
-                }
-                return false;
-            });
-
-            if (!loginClicked) await passInput?.press('Enter');
-
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
-            console.log("✅ Login success!");
-            await randomDelay(3000, 5000);
+            console.log("   ❌ Cookie Invalid. Please Login Manually first to save cookies.");
+            throw new Error("Login Failed. Run 'npm run login' first.");
         }
 
-        // 4. Kick Loop
-        let kickedCount = 0;
-        let failCount = 0;
+        // 3. SCROLL LOADER (The "Heavy" Lift)
+        console.log("   📜 Scrolling to load ALL members...");
+        await page.evaluate(async () => {
+            await new Promise<void>((resolve) => {
+                let totalHeight = 0;
+                const distance = 100;
+                let noScrollCount = 0;
+                const timer = setInterval(() => {
+                    const scrollHeightBefore = (document as any).body.scrollHeight;
+                    (window as any).scrollBy(0, distance);
+                    totalHeight += distance;
 
-        for (const user of targets) {
-            const targetEmail = user.email;
-            console.log(`⚔️ Processing Kick: ${targetEmail}`);
-
-            try {
-                // Determine Team URL
-                const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-                const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : null;
-                const url = teamId ? `https://www.canva.com/brand/${teamId}/people` : `https://www.canva.com/settings/people`;
-
-                if (page.url() !== url) {
-                    await page.goto(url, { waitUntil: 'networkidle2' });
-                    await randomDelay(3000, 5000);
-                }
-
-                // A. Search for User
-                console.log("   Searching for user...");
-                const userRowFound = await page.evaluate(async (email: string) => {
-                    const elements = Array.from(document.querySelectorAll('td, div, span'));
-                    const emailEl = elements.find(e => e.textContent?.trim() === email);
-                    if (!emailEl) return false;
-
-                    let row = emailEl.closest('tr');
-                    if (!row) {
-                        row = emailEl.closest('div[role="row"]') as any;
-                    }
-
-                    if (row) {
-                        // Find Checkbox in this row
-                        const checkbox = row.querySelector('input[type="checkbox"], input.UufAxw') as HTMLElement;
-                        if (checkbox) {
-                            checkbox.click();
-                            return true;
+                    if (((window as any).innerHeight + (window as any).scrollY) >= scrollHeightBefore - 50) {
+                        noScrollCount++;
+                        if (noScrollCount > 50) { // If stuck at bottom for ~2.5s, assume done
+                            clearInterval(timer);
+                            resolve();
                         }
+                    } else {
+                        noScrollCount = 0;
                     }
-                    return false;
-                }, targetEmail);
 
-                if (!userRowFound) {
-                    throw new Error("User email not found visible on page");
+                    if (totalHeight >= 50000) { clearInterval(timer); resolve(); } // Safety break
+                }, 50);
+            });
+        });
+        await randomDelay(2000, 3000);
+        console.log("   ✅ Scroll Complete.");
+
+        // 4. SCAN & SELECT (The "Brain")
+        console.log("   🔍 Scanning DOM for targets...");
+
+        const scanResult = await page.evaluate((bgWhiteList: string[], bgBlackList: string[], bgSafetyList: string[]) => {
+            const targets: string[] = [];
+            const safeSet = new Set(bgSafetyList);
+            const whiteSet = new Set(bgWhiteList);
+            const blackSet = new Set(bgBlackList);
+
+            // Find all rows (tr or div[role="row"])
+            // Strategy: Look for emails in page text
+            const rows = Array.from(document.querySelectorAll('tbody tr, div[role="row"]'));
+            let selectedCount = 0;
+
+            rows.forEach(row => {
+                const htmlRow = row as HTMLElement;
+                const text = htmlRow.innerText.toLowerCase();
+                // Extract Email
+                let email = "";
+                // Try from mailto?
+                const mailLink = row.querySelector('a[href^="mailto:"]');
+                if (mailLink) {
+                    email = mailLink.getAttribute('href')?.replace('mailto:', '').split('?')[0].trim().toLowerCase() || "";
                 }
 
-                console.log("   ✅ User selected. Clicking Remove...");
-                await randomDelay(1000, 2000);
-
-                // B. Click "Remove users" Button
-                const removeMainBtn = await page.waitForSelector('button[aria-label="Remove users"]', { visible: true, timeout: 5000 });
-                if (removeMainBtn) {
-                    await removeMainBtn.click();
-                } else {
-                    throw new Error("Remove users button not appeared");
+                if (!email) {
+                    const match = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+                    if (match) email = match[0];
                 }
 
+                if (!email) return;
+
+                // SAFETY: CHECK FOR TEAM OWNER / ADMIN ROLE IN UI
+                if (text.includes('owner') || text.includes('pemilik') || text.includes('administrator') || text.includes('team owner')) {
+                    return;
+                }
+
+                // DECISION LOGIC
+                let reason = "";
+                if (safeSet.has(email)) return; // SAFE
+                if (blackSet.has(email)) reason = "EXPIRED";
+                else if (!whiteSet.has(email)) reason = "GHOST (Not in DB)";
+
+                if (reason) {
+                    // CLICK CHECKBOX
+                    const checkbox = row.querySelector('input[type="checkbox"], input.UufAxw') as HTMLElement;
+                    if (checkbox && !checkbox.hasAttribute('checked') && !checkbox.getAttribute('aria-checked')?.includes('true')) {
+                        checkbox.click(); // Select it!
+                        targets.push(`${email} [${reason}]`);
+                        selectedCount++;
+                    }
+                }
+            });
+            return { targets, selectedCount };
+        }, Array.from(whiteList), Array.from(blackList), Array.from(safetyList));
+
+        console.log(`   🎯 Selected ${scanResult.selectedCount} users.`);
+        if (scanResult.targets.length > 0) {
+            console.log("   📝 Targets:", scanResult.targets.slice(0, 10), (scanResult.targets.length > 10 ? "...and more" : ""));
+        }
+
+        // 5. EXECUTE BATCH REMOVAL
+        if (scanResult.selectedCount > 0) {
+            await randomDelay(1000, 2000);
+
+            // Find "Remove users" button in toolbar
+            // It usually appears at top/bottom when items are selected
+            const removeBtnHandle = await page.evaluateHandle(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                return buttons.find(b => {
+                    const t = b.innerText.toLowerCase() || b.getAttribute('aria-label')?.toLowerCase() || "";
+                    return t.includes('remove') || t.includes('hapus');
+                });
+            });
+
+            const removeBtn = removeBtnHandle.asElement();
+            if (removeBtn) {
+                await removeBtn.click();
+                console.log("   🖱️ Clicked Bulk Remove Button");
+
                 await randomDelay(1000, 2000);
 
-                // C. Confirm Modal "Remove from team"
-                const confirmBtn = await page.evaluateHandle(() => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    return spans.find(s => s.textContent?.includes('Remove from team'))?.parentElement;
+                // CONFIRM MODAL
+                const confirmBtnHandle = await page.evaluateHandle(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    return buttons.find(b => {
+                        const t = b.innerText.toLowerCase();
+                        return t.includes('remove from team') || t.includes('hapus dari tim');
+                    });
                 });
 
+                const confirmBtn = confirmBtnHandle.asElement();
                 if (confirmBtn) {
-                    await (confirmBtn as any).click();
-                    console.log("   ✅ Kick Confirmed!");
-                    kickedCount++;
+                    await confirmBtn.click();
+                    console.log("   ✅ Confirmed Removal.");
 
-                    // Update DB (Only Subscriptions, preserve User record)
-                    if (user.id) {
-                        // Jangan ubah status User jadi kicked, biar kalau dia beli lagi nggak error
-                        // await sql("UPDATE users SET status = 'kicked' WHERE id = ?", [user.id]);
+                    // Wait for Toast
+                    try {
+                        await page.waitForFunction(() => {
+                            return document.body.innerText.toLowerCase().includes('removed') || document.body.innerText.toLowerCase().includes('dihapus');
+                        }, { timeout: 10000 });
 
-                        // Cukup tandai langganan ini yang berakhir
-                        await sql("UPDATE subscriptions SET status = 'kicked' WHERE id = ?", [user.sub_id]);
-                    }
-                    await sendTelegram(`🚫 <b>User Kicked</b>\nEmail: ${targetEmail}\nReason: ${manualTarget ? 'Manual Kick' : 'Expired'}`);
+                        // UPDATE DB for Expired ones
+                        // We iterate our known blacklist and see if they were in the DOM targets
+                        // This is an approximation. Ideally we parse the success message.
+                        const kickedEmails = scanResult.targets.map((t: string) => t.split(' ')[0]);
+                        let dbUpdateCount = 0;
+                        for (const ke of kickedEmails) {
+                            if (blackList.has(ke)) {
+                                // Mark as kicked in DB
+                                await sql("UPDATE subscriptions SET status = 'kicked' WHERE user_id = (SELECT id FROM users WHERE email = ?)", [ke]);
+                                dbUpdateCount++;
+                            }
+                        }
+
+                        const report = `⚔️ <b>Auto-Kick Batch Executed</b>\nTargets: ${kickedEmails.length}\nType: Mixed (Ghost/Expired)\nDB Updated: ${dbUpdateCount}`;
+                        await sendTelegram(report);
+
+                    } catch (e) { console.warn("   ⚠️ Toast not seen."); }
+
                 } else {
-                    throw new Error("Confirm button not found");
+                    console.error("   ❌ Confirm button not found!");
                 }
-
-                await randomDelay(2000, 4000);
-
-            } catch (kErr: any) {
-                console.error(`   ❌ Kick Failed: ${kErr.message}`);
-                failCount++;
+            } else {
+                console.error("   ❌ Bulk Remove button not found!");
             }
+
+        } else {
+            console.log("   ✅ No targets found. Team is Clean.");
         }
 
-        const summary = `🏁 <b>Auto-Kick Finished</b>\n✅ Kicked: ${kickedCount}\n❌ Failed: ${failCount}`;
-        console.log(summary);
-        await sendTelegram(summary);
-
-        await browser.close();
-
-    } catch (err: any) {
-        console.error("Critical Error:", err);
-        await sendTelegram(`⛔ <b>Auto-Kick Critical</b>\n${err.message}`);
-        await browser.close();
+    } catch (e: any) {
+        console.error("Critical Error:", e);
+        const pages = await browser.pages();
+        if (pages.length > 0) {
+            await pages[0].screenshot({ path: 'error_kick.jpg' });
+        }
+    } finally {
+        setTimeout(() => browser.close(), 3000);
     }
 }
 
-kickExpiredUsers();
+kickEnforcer();

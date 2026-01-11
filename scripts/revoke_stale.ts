@@ -59,7 +59,9 @@ async function revokeStaleInvites() {
     // We only care about users created > 1 hour ago. 
     // If they are still "Invited" in Canva, we remove them.
     const staleThreshold = await sql("SELECT datetime('now', '-1 hour') as threshold");
-    console.log(`🕒 Threshold Time: ${staleThreshold.rows[0].threshold} UTC`);
+    const utcDate = new Date(staleThreshold.rows[0].threshold + "Z"); // Treat as UTC
+    const wibTime = utcDate.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false });
+    console.log(`🕒 Threshold Time: ${wibTime} WIB`);
 
     const staleDBUsers = await sql(`
         SELECT * FROM users 

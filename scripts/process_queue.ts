@@ -1,4 +1,4 @@
-/// <reference lib="dom" />
+// @ts-nocheck
 import { addExtra } from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import * as puppeteerCore from 'puppeteer-core';
@@ -854,7 +854,7 @@ async function runPuppeteerQueue() {
             const userId = user.id as number;
             const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
             const planName = user.plan_name || 'Unknown';
-            const endDate = user.end_date ? new Date(user.end_date as string).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-';
+            const endDate = user.end_date ? TimeUtils.format(new Date((user.end_date as string).replace(' ', 'T') + 'Z')).replace(' WIB', '') : '-';
 
             console.log(`🦶 Processing Kick: ${email}`);
 

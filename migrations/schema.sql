@@ -1,7 +1,7 @@
 -- Tabel Pengguna (Users)
 -- Menyimpan data profil user Telegram
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY, -- ID Telegram User
+  id INTEGER PRIMARY KEY, -- ID Telegram User (Unix ID)
   username TEXT,          -- Username Telegram
   first_name TEXT,        -- Nama Depan
   language TEXT DEFAULT 'id', -- Bahasa pilihan ('id' atau 'en')
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   referral_code TEXT UNIQUE,   -- Kode Referral Unik (Misal: REF12345)
   referred_by INTEGER,         -- ID User yang mengundang
   referral_points INTEGER DEFAULT 0, -- Poin Referral (Saldo Invite)
+  last_message_id TEXT,        -- ID Pesan terakhir untuk editing bot
   joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -35,7 +36,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   start_date DATETIME DEFAULT CURRENT_TIMESTAMP, -- Waktu mulai
   end_date DATETIME NOT NULL, -- Waktu kedaluwarsa
   status TEXT DEFAULT 'active', -- 'active', 'expired', 'kicked'
-  canva_team_id TEXT,         -- ID Team Canva tempat user diundang
   FOREIGN KEY(user_id) REFERENCES users(id),
   FOREIGN KEY(product_id) REFERENCES products(id)
 );
