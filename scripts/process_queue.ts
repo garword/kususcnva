@@ -565,284 +565,115 @@ async function runPuppeteerQueue() {
         let failKicks = 0;
 
         // ========================================================================
-        // PROCESS INVITES
+        // PROCESS INVITES (BATCH MODE - "SERENTAK")
         // ========================================================================
-        for (const user of pendingInvites.rows) {
-            const email = user.email as string;
-            const userId = user.id as number;
-            const username = user.username ? `@${user.username}` : (user.first_name || 'No Name');
-            const planName = user.plan_name || 'Trial/Unknown';
-            const duration = (user as any).duration_days || 30; // Default 30 days
-            const prodId = (user as any).prod_id || 1;
-
-            // Calculate End Date for visual log (Approx)
-            // Calculate End Date for visual log (Precise WIB)
-            // const endDateObj = new Date();
-            // endDateObj.setDate(endDateObj.getDate() + duration);
-            const endDateObj = TimeUtils.addDays(duration);
-            const endDateStr = TimeUtils.format(endDateObj);
-
-            console.log(`📧 Processing Invite: ${email} (${duration} days)`);
+        if (pendingInvites.rows.length > 0) {
+            console.log(`🚀 Starting Batch Invite for ${pendingInvites.rows.length} users...`);
+            let globalInviteData = { success: false, message: "" };
 
             try {
+                // 1. NAVIGATE & GET CODE (ONCE)
                 // Fix: Default to /settings/people for finding the invite button
                 const teamUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : 'https://www.canva.com/settings/people';
                 console.log(`   Navigating to: ${teamUrl}`);
-                await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-                await new Promise(r => setTimeout(r, 4000)); // Longer wait for page to stabilize
+                await page.goto(teamUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                await randomDelay(3000, 5000);
 
-                // DEBUG: Screenshot the page before attempting invite
-                const debugShot = `debug_before_invite_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: debugShot, quality: 60, type: 'jpeg' });
-                    console.log(`   [DEBUG] Screenshot saved: ${debugShot}`);
-                } catch (e) { console.log('   [DEBUG] Screenshot failed'); }
+                console.log('   [DEBUG] Looking for Invite people button...');
+                const inviteButtonFound = await page.evaluate(() => {
+                    const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
+                    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const button = result.singleNodeValue as HTMLElement;
+                    if (button) { button.click(); return true; }
+                    return false;
+                });
 
-                // NATIVE PUPPETEER INVITE FLOW (More Reliable + HUMAN-LIKE)
-                console.log('   [DEBUG] Starting native Puppeteer invite flow...');
-                let result = { success: false, message: "" };
+                if (!inviteButtonFound) throw new Error("Invite people button not found");
 
-                // Human pause before starting
-                await randomDelay(1000, 2000);
+                await randomDelay(1500, 2500);
+                console.log('   [DEBUG] Starting "Via Code" Flow...');
 
-                try {
-                    // 1. Find and click "Invite people" button
-                    console.log('   [DEBUG] Looking for Invite people button...');
-                    await randomDelay(500, 1000); // Look around
+                const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 10000 });
+                if (viaCodeBtn) {
+                    await viaCodeBtn.click();
+                    await new Promise(r => setTimeout(r, 2000));
 
-                    const inviteButtonFound = await page.evaluate(() => {
-                        const xpath = "//button[contains(., 'Invite people') or contains(., 'Undang orang') or contains(., 'Add students')]";
-                        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                        const button = result.singleNodeValue as HTMLElement;
-                        if (button) {
-                            button.click();
-                            return true;
-                        }
-                        return false;
-                    });
-
-                    if (!inviteButtonFound) {
-                        // DEBUG: List all buttons found on page to understand what's visible
-                        const visibleButtons = await page.evaluate(() => {
-                            return Array.from(document.querySelectorAll('button'))
-                                .map(b => b.textContent?.trim() || '')
-                                .filter(t => t.length > 0)
-                                .slice(0, 10); // First 10 buttons
-                        });
-                        const pageTitle = await page.title();
-                        const pageUrl = page.url();
-
-                        console.log(`   [DEBUG] ERROR: Invite button not found!`);
-                        console.log(`   [DEBUG] Current Page: ${pageTitle} (${pageUrl})`);
-                        console.log(`   [DEBUG] Visible Buttons: ${JSON.stringify(visibleButtons)}`);
-
-                        // Check for specific blockers
-                        const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-                        if (bodyText.includes("What will you be using Canva for")) {
-                            console.log("   [DEBUG] BLOCKED by Onboarding Modal! (Needs handling)");
-                        }
-
-                        throw new Error(`Invite people button not found. Page: ${pageTitle}`);
-                    }
-
-                    console.log('   [DEBUG] Clicking Invite button...');
-                    await randomDelay(1500, 2500);
-
-                    // --- VIA CODE FLOW ONLY (Email Disabled) ---
-                    console.log('   [DEBUG] Starting "Via Code" Flow (Email Invite Disabled)...');
-
-                    try {
-                        const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 10000 });
-                        if (viaCodeBtn) {
-                            await viaCodeBtn.click();
-                            await new Promise(r => setTimeout(r, 2000));
-
-                            const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 10000 });
-                            if (copyCodeBtn) {
-                                await copyCodeBtn.click();
-                                await new Promise(r => setTimeout(r, 1000));
-
-                                const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
-                                if (code) {
-                                    result = { success: true, message: code };
-                                    console.log(`   [DEBUG] Success! Code: ${code}`);
-                                } else {
-                                    throw new Error("Could not read code/link from clipboard after clicking Copy");
-                                }
-                            } else {
-                                throw new Error("Copy code button not found");
-                            }
+                    const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 10000 });
+                    if (copyCodeBtn) {
+                        await copyCodeBtn.click();
+                        await new Promise(r => setTimeout(r, 1000));
+                        const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+                        if (code) {
+                            globalInviteData = { success: true, message: code };
+                            console.log(`   [DEBUG] Success! Class Code/Link retrieved: ${code}`);
                         } else {
-                            throw new Error("Via code button not found");
+                            throw new Error("Clipboard empty after copy");
                         }
-                    } catch (viaCodeErr: any) {
-                        console.error('   [DEBUG] Via Code Flow Failed:', viaCodeErr.message);
-                        throw viaCodeErr; // Re-throw to be caught by outer handler
-                    }
-
-                    // CAPTURE SCREENSHOT (Evidence)
-                    const screenshotPath = `debug_after_viacode_${Date.now()}.jpg`;
-                    await page.screenshot({ path: screenshotPath, fullPage: false });
-                    console.log(`   [DEBUG] Screenshot saved: ${screenshotPath}`);
-
-                    if (result.success) {
-                        // Skip validation check for email since we are using code
-                    } else {
-                        throw new Error("Failed to get Code/Link");
-                    }
-                    // End of validation check
-
-                } catch (error: any) {
-                    console.error("Invite Process Error:", error.message);
-                    result = { success: false, message: error.message };
-                }
-
-                if (result.success) {
-                    console.log(`✅ Invited: ${email}`);
-                    successInvites++;
-
-                    // Create Subscription Record
-                    // IDEMPOTENCY CHECK: Cek apakah user sudah punya sub aktif yang baru dibuat (kurang dari 1 jam lalu)
-                    const recentSubRes = await sql(`
-                        SELECT id FROM subscriptions 
-                        WHERE user_id = ? AND status = 'active' 
-                        AND product_id = ?
-                        AND start_date > datetime('now', '-1 hour')
-                    `, [userId, prodId]);
-
-                    let subId = "";
-
-                    if (recentSubRes.rows.length > 0) {
-                        console.log(`⚠️ User ${userId} already has a recent valid subscription. Skipping duplicate INSERT.`);
-                        subId = recentSubRes.rows[0].id as string;
-                    } else {
-                        // Create New Subscription Record
-                        subId = `sub_${Date.now()}_${userId}`;
-                        const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
-                        const endStr = TimeUtils.addDays(duration).toISOString().replace('T', ' ').substring(0, 19);
-
-                        await sql(`
-                            INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) 
-                            VALUES (?, ?, ?, ?, ?, 'active')
-                        `, [subId, userId, prodId, startStr, endStr]);
-                        console.log(`✅ Subscription Created: ${subId}`);
-                    }
-
-                    if (userId > 0) {
-                        let msgId = null;
-                        const lastMsgId = user.last_message_id; // Get stored ID
-
-                        if (result.message.startsWith("http")) {
-                            const text = `⚠️ <b>Metode Email Dibatasi!</b>\n\nCanva membatasi invite email. Silakan klik link di bawah untuk join:\n\n🔗 ${result.message}\n\n📅 <b>Expired:</b> ${endDateStr}`;
-                            if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text);
-                            if (!msgId) msgId = await sendTelegram(userId.toString(), text);
-
-                        } else {
-                            const code = result.message;
-                            const text = `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\nUntuk mengaktifkan Pro, ikuti langkah berikut:\n\n<b>1. Buka Halaman Join</b>\nKlik link ini: <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n\n<b>2. Masukkan Kode Identifikasi</b>\nSalin dan tempel kode ini:\n\n<code>${code}</code>\n<i>(Tekan kode untuk menyalin otomatis)</i>\n\n<b>3. Selesai!</b>\nKlik <b>"Join"</b> dan nikmati fitur Canva Pro. ✨\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`;
-                            if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text, { disable_web_page_preview: true });
-                            if (!msgId) msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
-                        }
-
-                        // ALWAYS MARK ACTIVE if Invite Succeeded (Even if Telegram Failed)
-                        // This prevents infinite loops of creating subscriptions
-                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
-
-                        if (msgId) {
-                            console.log(`✅ User ${userId} marked as ACTIVE after sending msg ${msgId}`);
-                            // AUTO DELETE logic...
-                            console.log(`⏳ Scheduled deletion for message ${msgId} in 2 minutes...`);
-                            setTimeout(() => { deleteTelegramMessage(userId, msgId); }, 120 * 1000);
-                        } else {
-                            console.error(`⚠️ Notification failed for ${userId}, but Invite Code is generated: ${result.message}`);
-                        }
-
-                    } else {
-                        // For manual testing without telegram ID
-                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
-                    }
-
-                    // WAIT FOR SUCCESS NOTIFICATION & REFRESH PAGE
-                    console.log("   Waiting 5 seconds for success notification...");
-                    await new Promise(r => setTimeout(r, 5000)); // Wait 5 seconds as requested by user
-                    console.log("   Refreshing page to show user in list...");
-                    await page.reload({ waitUntil: 'networkidle2' }); // Refresh to show user in list
-                    await new Promise(r => setTimeout(r, 2000)); // Wait for page to fully load
-
-                    // CAPTURE SUCCESS SCREENSHOT & SEND
-                    const shotPath = `success_${Date.now()}.jpg`;
-                    try {
-                        await page.screenshot({ path: shotPath, quality: 60, type: 'jpeg' });
-                        const inviteLog = `✅ <b>Invite Success</b>\n👤 User: ${username}\n📧 Email: ${email}\n📅 Expired: ${endDateStr}`;
-                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, inviteLog);
-                        if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
-                    } catch (shotErr) {
-                        console.error("Screenshot failed:", shotErr);
-                        await sendSystemLog(`✅ <b>Invite Success</b> (No Screenshot)\nEmail: ${email}`);
-                    }
-
-                } else {
-                    console.log(`❌ Failed: ${result.message}`);
-
-                    // NOTIFY USER OF FAILURE (Overwrite "Permintaan Diterima")
-                    if (userId > 0) {
-                        const lastMsgId = user.last_message_id;
-                        const failText = `❌ <b>Gagal Mengirim Invite!</b>\n\nAlasan: ${result.message}\n\n<i>Silakan coba lagi nanti atau hubungi Admin jika error berlanjut.</i>`;
-
-                        let sent = false;
-                        if (lastMsgId) {
-                            // Try Edit
-                            const res = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), failText);
-                            if (res) sent = true;
-                        }
-
-                        if (!sent) {
-                            // Fallback Send
-                            await sendTelegram(userId.toString(), failText);
-                        }
-                    }
-
-                    // Log diagnostic info if available
-                    if ((result as any).debug) {
-                        const debug = (result as any).debug;
-                        console.log(`   [DIAGNOSTIC INFO]:`);
-                        console.log(`      - Button found: ${debug.buttonFound}`);
-                        console.log(`      - Checks performed: ${debug.checked}/20`);
-                        if (debug.lastButtonState) {
-                            console.log(`      - Button disabled prop: ${debug.lastButtonState.disabled}`);
-                            console.log(`      - Button aria-disabled: ${debug.lastButtonState.ariaDisabled}`);
-                            console.log(`      - Button className: ${debug.lastButtonState.className}`);
-                        } else {
-                            console.log(`      - Button element not found in DOM`);
-                        }
-                    }
-
-                    failInvites++;
-                    await sendSystemLog(`❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
-
-                    // CAPTURE FAIL SCREENSHOT
-                    const errShotPath = `fail_${Date.now()}.jpg`;
-                    try {
-                        await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
-                        await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Invite Failed</b>\nEmail: ${email}\nReason: ${result.message}`);
-                        if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
-                    } catch (shotErr) { console.error("Screenshot failed:", shotErr); }
-                }
+                    } else throw new Error("Copy code button not found");
+                } else throw new Error("Via code button not found");
 
             } catch (e: any) {
-                console.error(e);
-                failInvites++;
+                console.error("❌ Failed to fetch Invite Code:", e.message);
+                await sendSystemLog(`❌ <b>Batch Invite Error</b>\nGagal mengambil Invite Code.\nError: ${e.message}`);
+            }
 
-                // CAPTURE ERROR SCREENSHOT
-                const errShotPath = `error_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: errShotPath, quality: 60, type: 'jpeg' });
-                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, errShotPath, `❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
-                    if (fs.existsSync(errShotPath)) fs.unlinkSync(errShotPath);
-                } catch (shotErr) {
-                    console.error("Screenshot failed:", shotErr);
-                    await sendSystemLog(`❌ <b>Apps Error</b>\nEmail: ${email}\nError: ${e.message}`);
+            // 2. DISTRIBUTE TO USERS (IF SUCCESS)
+            if (globalInviteData.success) {
+                console.log(`📤 Broadcasting Code to ${pendingInvites.rows.length} users...`);
+
+                for (const user of pendingInvites.rows) {
+                    const email = user.email as string;
+                    const userId = user.id as number;
+                    const prodId = (user as any).prod_id || 1;
+                    const duration = (user as any).duration_days || 30;
+                    const endDateObj = TimeUtils.addDays(duration);
+                    const endDateStr = TimeUtils.format(endDateObj);
+
+                    console.log(`   📧 Sending to ${email}...`);
+
+                    try {
+                        // DB UPDATE (Subscription + Active Status)
+                        const recentSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND product_id = ? AND start_date > datetime('now', '-1 hour')`, [userId, prodId]);
+
+                        if (recentSubRes.rows.length === 0) {
+                            const subId = `sub_${Date.now()}_${userId}`;
+                            const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
+                            const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
+                            await sql(`INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'active')`, [subId, userId, prodId, startStr, endStr]);
+                        }
+
+                        // NOTIFY USER
+                        if (userId > 0) {
+                            let msgId = null;
+                            const lastMsgId = user.last_message_id;
+
+                            if (globalInviteData.message.startsWith("http")) {
+                                const text = `⚠️ <b>Metode Email Dibatasi!</b>\n\nSilakan klik link di bawah untuk join:\n\n🔗 ${globalInviteData.message}\n\n📅 <b>Expired:</b> ${endDateStr}`;
+                                if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text);
+                                if (!msgId) msgId = await sendTelegram(userId.toString(), text);
+                            } else {
+                                const code = globalInviteData.message;
+                                const text = `🎉 <b>UNDANGAN CANVA PRO PROSES SUKSES!</b>\n\n<b>1. Buka Link:</b> <a href="https://www.canva.com/class/join">https://www.canva.com/class/join</a>\n<b>2. Masukkan Kode:</b> <code>${code}</code>\n\n⏳ <i>Pesan ini akan dihapus dalam 2 menit.</i>`;
+                                if (lastMsgId) msgId = await editTelegramMessage(userId.toString(), parseInt(String(lastMsgId)), text, { disable_web_page_preview: true });
+                                if (!msgId) msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
+                            }
+
+                            // Auto-Delete logic
+                            if (msgId) setTimeout(() => { deleteTelegramMessage(userId, msgId); }, 120 * 1000);
+                        }
+
+                        // Mark Active
+                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
+                        successInvites++;
+
+                    } catch (distErr) {
+                        console.error(`   ❌ Error sending to ${userId}:`, distErr);
+                        failInvites++;
+                    }
                 }
+            } else {
+                console.log("   ⚠️ Skipping distribution due to fetch failure.");
+                failInvites += pendingInvites.rows.length;
             }
         }
 
