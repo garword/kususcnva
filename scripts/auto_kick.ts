@@ -127,9 +127,26 @@ async function kickEnforcer() {
     try {
         const page = await browser.newPage();
 
+
         // Restore Session
-        if (fs.existsSync('auth_user_agent.txt')) {
-            try { await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim()); } catch (e) { }
+        // 1. Try DB User-Agent first (Matches sync_member_count usage)
+        try {
+            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+            if (uaRes.rows.length > 0) {
+                const ua = uaRes.rows[0].value as string;
+                await page.setUserAgent(ua);
+                console.log(`   📱 User-Agent set from DB: ${ua.substring(0, 30)}...`);
+                // Update local file for fallback
+                fs.writeFileSync('auth_user_agent.txt', ua);
+            } else if (fs.existsSync('auth_user_agent.txt')) {
+                // Fallback to file
+                await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim());
+            }
+        } catch (e) {
+            // Fallback if DB fails
+            if (fs.existsSync('auth_user_agent.txt')) {
+                await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim());
+            }
         }
 
         // ENABLE CONSOLE LOGS FROM BROWSER
