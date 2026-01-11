@@ -389,7 +389,7 @@ async function kickEnforcer() {
 
         } else {
             console.log(`[${TimeUtils.format()}] ✅ No targets found. Team is Clean.`);
-            // await sendTelegram("🛡️ <b>Auto-Kick Check:</b> Clean (No illegal members)."); // Uncomment for verbose logs
+            await sendTelegram("🛡️ <b>Auto-Kick Check:</b> Clean (No illegal members)."); // Enabled for visibility
         }
 
     } catch (e: any) {
