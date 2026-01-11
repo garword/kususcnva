@@ -58,7 +58,10 @@ async function sendTelegram(message: string) {
 async function kickEnforcer() {
     console.log(`[${TimeUtils.format()}] 👮 Auto-Kick ENFORCER Mode Started...`);
 
-    // 0. Prepare Memory Lists
+    // 0. PRE-KICK: Update Expired Status (Self-healing)
+    await sql(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND end_date < datetime('now')`);
+
+    // 0.1 Prepare Memory Lists
     // WhiteList: Active Subscriptions + Pending Invites (Don't kick new invites)
     const activeSubRes = await sql(`
         SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'
