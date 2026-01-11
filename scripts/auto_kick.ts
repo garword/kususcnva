@@ -205,13 +205,27 @@ async function kickEnforcer() {
                 const text = htmlRow.innerText.toLowerCase();
                 // Extract Email
                 let email = "";
+                // Extract Email - Strategy 1: Mailto Link
                 const mailLink = row.querySelector('a[href^="mailto:"]');
                 if (mailLink) {
                     email = mailLink.getAttribute('href')?.replace('mailto:', '').split('?')[0].trim().toLowerCase() || "";
                 }
 
+                // Extract Email - Strategy 2: Regex Scan on InnerText
                 if (!email) {
-                    const match = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+                    // Cleaner regex to find email in text
+                    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
+
+                    // Prioritize specific cells if possible, otherwise scan full row
+                    const cells = Array.from(row.querySelectorAll('td, div[role="gridcell"], .cZc9Ng')); // Common Canva table classes
+                    let textToScan = text;
+
+                    if (cells.length > 0) {
+                        // Often the first cell has the Name/Email for pending invites
+                        textToScan = cells[0].textContent?.toLowerCase() || text;
+                    }
+
+                    const match = textToScan.match(emailRegex);
                     if (match) email = match[0];
                 }
 
