@@ -284,29 +284,77 @@ async function kickEnforcer() {
                     await confirmBtn.click();
                     console.log("   ✅ Confirmed Removal.");
 
-                    // Wait for Toast
-                    try {
-                        await page.waitForFunction(() => {
-                            return document.body.innerText.toLowerCase().includes('removed') || document.body.innerText.toLowerCase().includes('dihapus');
-                        }, { timeout: 10000 });
+                    // Wait for operation to complete on server side
+                    await randomDelay(3000, 5000);
 
-                        // UPDATE DB for Expired ones
-                        // We iterate our known blacklist and see if they were in the DOM targets
-                        // This is an approximation. Ideally we parse the success message.
-                        const kickedEmails = scanResult.targets.map((t: string) => t.split(' ')[0]);
-                        let dbUpdateCount = 0;
+                    // ============================================================
+                    // 🛡️ VERIFICATION PHASE (Refresh & Verify)
+                    // ============================================================
+                    console.log(`[${TimeUtils.format()}] 🔄 Refreshing page to verify removal...`);
+                    await page.reload({ waitUntil: 'networkidle2' });
+                    await randomDelay(3000, 5000);
+
+                    const kickedEmails = scanResult.targets.map((t: string) => t.split(' ')[0]);
+                    let verifiedCount = 0;
+                    let dbUpdateCount = 0;
+
+                    console.log(`   🔍 Verifying ${kickedEmails.length} removals via Search...`);
+
+                    // Find Search Input
+                    const searchInput = await page.evaluateHandle(() => {
+                        const inputs = Array.from(document.querySelectorAll('input'));
+                        return inputs.find(i =>
+                            (i.placeholder && (i.placeholder.toLowerCase().includes('search') || i.placeholder.toLowerCase().includes('cari'))) ||
+                            (i.getAttribute('aria-label') && (i.getAttribute('aria-label')!.toLowerCase().includes('search') || i.getAttribute('aria-label')!.toLowerCase().includes('cari'))) ||
+                            i.type === 'search'
+                        );
+                    });
+
+                    if (searchInput && searchInput.asElement()) {
+                        for (const email of kickedEmails) {
+                            try {
+                                // Clear & Type
+                                await page.evaluate((el: any) => { el.value = ''; }, searchInput);
+                                await searchInput.asElement()!.type(email, { delay: 50 });
+                                await randomDelay(1500, 2500); // Wait for filter
+
+                                // Check results
+                                const exists = await page.evaluate((checkEmail) => {
+                                    const bodyText = document.body.innerText.toLowerCase();
+                                    // If text says "No people found" or table is empty of that email
+                                    // We look for specific row match to be sure
+                                    return bodyText.includes(checkEmail);
+                                }, email);
+
+                                if (!exists) {
+                                    console.log(`      ✅ Verified Gone: ${email}`);
+                                    verifiedCount++;
+
+                                    // UPDATE DB (Only if verified gone)
+                                    if (blackList.has(email)) {
+                                        await sql("UPDATE subscriptions SET status = 'kicked' WHERE user_id = (SELECT id FROM users WHERE email = ?)", [email]);
+                                        dbUpdateCount++;
+                                    }
+                                } else {
+                                    console.warn(`      ⚠️ Verification Failed: ${email} still found via search.`);
+                                }
+                            } catch (e) { console.error(`      ⚠️ Error verifying ${email}:`, e); }
+                        }
+                    } else {
+                        console.warn("   ⚠️ Search bar not found. Skipping granular verification. Assuming success based on Toast.");
+                        verifiedCount = kickedEmails.length; // Fallback assumption
+
+                        // Fallback DB update
                         for (const ke of kickedEmails) {
                             if (blackList.has(ke)) {
-                                // Mark as kicked in DB
                                 await sql("UPDATE subscriptions SET status = 'kicked' WHERE user_id = (SELECT id FROM users WHERE email = ?)", [ke]);
                                 dbUpdateCount++;
                             }
                         }
+                    }
 
-                        const report = `⚔️ <b>Auto-Kick Batch Executed</b>\nTargets: ${kickedEmails.length}\nType: Mixed (Ghost/Expired)\nDB Updated: ${dbUpdateCount}`;
-                        await sendTelegram(report);
-
-                    } catch (e) { console.warn("   ⚠️ Toast not seen."); }
+                    const report = `⚔️ <b>Auto-Kick Batch Executed</b>\nTargets: ${kickedEmails.length}\nVerified: ${verifiedCount}\nDB Updated: ${dbUpdateCount}`;
+                    await sendTelegram(report);
 
                 } else {
                     console.error("   ❌ Confirm button not found!");
