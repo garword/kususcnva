@@ -7,6 +7,8 @@ import * as dotenv from 'dotenv';
 import axios from 'axios';
 import fs from 'fs';
 
+import { TimeUtils } from '../src/lib/time';
+
 dotenv.config();
 
 // Setup Puppeteer
@@ -54,7 +56,7 @@ async function sendTelegram(message: string) {
 }
 
 async function kickEnforcer() {
-    console.log("👮 Auto-Kick ENFORCER Mode Started...");
+    console.log(`[${TimeUtils.format()}] 👮 Auto-Kick ENFORCER Mode Started...`);
 
     // 0. Prepare Memory Lists
     const activeSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'`);

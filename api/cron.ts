@@ -52,6 +52,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         } else {
             console.log("✅ No expired users found.");
+
+            // 3. PERIODIC CLEANUP CHECK (Every 30 Minutes: :00 and :30)
+            // Use UTC Date for minute check (Universal)
+            const nowMap = new Date();
+            const minutes = nowMap.getMinutes();
+
+            // Trigger if minute is roughly 0 or 30 (Allow 1 min window due to Cron latency)
+            if (minutes === 0 || minutes === 30 || minutes === 1 || minutes === 31) {
+                console.log(`⏰ Periodic Maintenance Trigger (${minutes}): Dispatching 'auto_kick'...`);
+
+                const githubToken = process.env.GITHUB_TOKEN;
+                const repo = process.env.GITHUB_REPO;
+
+                if (githubToken && repo) {
+                    await axios.post(
+                        `https://api.github.com/repos/${repo}/dispatches`,
+                        { event_type: 'auto_kick' }, // Trigger auto_kick workflow
+                        { headers: { 'Authorization': `Bearer ${githubToken}`, 'Accept': 'application/vnd.github.v3+json' } }
+                    );
+                    return res.status(200).json({ success: true, message: "Maintenance Triggered (Auto-Kick)", count: 0 });
+                }
+            }
+
             return res.status(200).json({ success: true, message: "No expired users", count: 0 });
         }
 
