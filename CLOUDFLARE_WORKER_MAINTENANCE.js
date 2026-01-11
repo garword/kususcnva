@@ -5,14 +5,18 @@ export default {
         const GITHUB_REPO = 'kususcnva';
         const GITHUB_TOKEN = env.GH_PAT; // WAJIB DISET DI CLOUDFLARE ENV!
 
+        // Helper: Format Jam WIB
+        const nowWIB = () => new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
         // --- 2. TRIGGER GITHUB ACTION ---
-        console.log(`[Cron] Triggering GitHub Action: process_queue...`);
+        console.log(`[${nowWIB()}] ⏰ Cron Triggered: Triggering GitHub Action (process_queue)...`);
 
         const ghUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`;
         const ghPayload = {
             event_type: "process_queue",
             client_payload: {
                 timestamp: new Date().toISOString(),
+                friendly_time: nowWIB(),
                 source: "cloudflare_worker"
             }
         };
@@ -27,10 +31,10 @@ export default {
             body: JSON.stringify(ghPayload)
         })
             .then(async res => {
-                if (res.ok) console.log("[Cron] ✅ GitHub Action Triggered Successfully!");
-                else console.error(`[Cron] ❌ Failed to trigger GH: ${res.status} ${await res.text()}`);
+                if (res.ok) console.log(`[${nowWIB()}] ✅ GitHub Action Triggered Successfully!`);
+                else console.error(`[${nowWIB()}] ❌ Failed to trigger GH: ${res.status} ${await res.text()}`);
             })
-            .catch(e => console.error("[Cron] ❌ Error triggering GH:", e));
+            .catch(e => console.error(`[${nowWIB()}] ❌ Error triggering GH:`, e));
 
         ctx.waitUntil(triggerGithub);
     },
