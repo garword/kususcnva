@@ -138,6 +138,7 @@ bot.hears("📖 Panduan", async (ctx) => {
         msg += `<b>👮 Perintah Admin:</b>\n` +
             `• <b>/admin</b> - Buka panel admin super.\n` +
             `• <b>/data</b> - Export laporan user (.txt).\n` +
+            `• <b>/addpoint [ID|Poin]</b> - Tambah poin referral manual.\n` +
             `• <b>/set_cookie [json]</b> - Set cookie Canva baru.\n` +
             `• <b>/setua [ua]</b> - Set User-Agent browser.\n` +
             `• <b>/cekcookie</b> - Cek isi cookie aktif di DB.\n` +
@@ -1237,7 +1238,7 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
         .text("☠️ Force Expire", "adm_help_exp").text("�️ Menu Hapus", "adm_menu_del").row()
         .text("� Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
         .text("🍪 Status Cookie", "adm_cookie").text("⚙️ Cek Team ID", "adm_team_id").row()
-        .text("� Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch");
+        .text("� Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch").row().text("➕ Add Point Manual", "adm_help_addpoint");
 
     await ctx.reply(
         `<b>Panel Admin Super v2.0</b>\n\n` +
@@ -1892,4 +1893,11 @@ bot.catch((err) => {
     } else {
         console.error("Unknown error:", e);
     }
+});
+
+// Helper: Add Point Guide
+bot.callbackQuery("adm_help_addpoint", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply("➕ <b>Tambah Poin Manual:</b>\n\nCommand: <code>/addpoint [ID_TELEGRAM]|[JUMLAH]</code>\n\nContoh: <code>/addpoint 1234567890|100</code>\n(Tanpa spasi di antara garis tegak)", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
 });
