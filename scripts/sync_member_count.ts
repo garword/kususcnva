@@ -193,10 +193,11 @@ async function syncMemberCount() {
             if (lastNotifStr) {
                 const lastDate = new Date(lastNotifStr);
                 const diffMs = Date.now() - lastDate.getTime();
-                const diffHours = diffMs / (1000 * 60 * 60);
-                if (diffHours < 4) {
+                const diffMinutes = diffMs / (1000 * 60);
+
+                if (diffMinutes < 20) {
                     shouldSend = false;
-                    console.log(`   ⏳ Skipping notification (Cooldown: ${diffHours.toFixed(1)}/4 hours)`);
+                    console.log(`   ⏳ Skipping notification (Cooldown: ${diffMinutes.toFixed(1)}/20 mins)`);
                 }
             }
 
