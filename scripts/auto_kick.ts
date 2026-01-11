@@ -116,7 +116,11 @@ async function kickEnforcer() {
             '--start-maximized',
             '--disable-blink-features=AutomationControlled',
             '--disable-notifications',
-            '--timezone=Asia/Jakarta'
+            '--timezone=Asia/Jakarta',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-dev-shm-usage',
+            '--log-level=3'
         ]
     });
 
@@ -175,7 +179,8 @@ async function kickEnforcer() {
 
                     if (((window as any).innerHeight + (window as any).scrollY) >= scrollHeightBefore - 50) {
                         noScrollCount++;
-                        if (noScrollCount > 50) { // If stuck at bottom for ~2.5s, assume done
+                        // Increase patience: Wait 100 * 50ms = 5s (was 2.5s)
+                        if (noScrollCount > 100) {
                             clearInterval(timer);
                             resolve();
                         }
@@ -183,7 +188,8 @@ async function kickEnforcer() {
                         noScrollCount = 0;
                     }
 
-                    if (totalHeight >= 50000) { clearInterval(timer); resolve(); } // Safety break
+                    // Safety break: Increase to 200,000px (approx 4000 members)
+                    if (totalHeight >= 200000) { clearInterval(timer); resolve(); }
                 }, 50);
             });
         });
@@ -232,9 +238,12 @@ async function kickEnforcer() {
                 }
 
                 if (!email) {
-                    // console.log(`   ⚠️ No email found in Row ${idx}`);
+                    console.log(`   ⚠️ Row ${rows.indexOf(row)}: No email found. Text: "${text.substring(0, 50)}..."`);
                     return;
                 }
+
+                // DEBUG: Log every email found to trace "Ghost" detection
+                console.log(`   🔎 Scanned: ${email} | Text: ${text.substring(0, 30)}...`);
 
                 if (!email) return;
 
