@@ -59,8 +59,16 @@ async function kickEnforcer() {
     console.log(`[${TimeUtils.format()}] 👮 Auto-Kick ENFORCER Mode Started...`);
 
     // 0. Prepare Memory Lists
-    const activeSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'`);
+    // WhiteList: Active Subscriptions + Pending Invites (Don't kick new invites)
+    const activeSubRes = await sql(`
+        SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'
+        UNION
+        SELECT email FROM users WHERE status = 'pending_invite'
+    `);
     const expiredSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'expired'`);
+
+    // NEW: Stale Invites (> 1 hour pending)
+    const staleRes = await sql(`SELECT email FROM users WHERE status = 'pending_invite' AND joined_at < datetime('now', '-1 hour')`);
 
     // Safety List: Admins + Bot Account + Manual Whitelist (if any)
     const adminRes = await sql(`SELECT email FROM users WHERE role = 'admin'`);
@@ -71,6 +79,9 @@ async function kickEnforcer() {
 
     const whiteList = new Set(activeSubRes.rows.map((r: any) => (r.email || "").toLowerCase()));
     const blackList = new Set(expiredSubRes.rows.map((r: any) => (r.email || "").toLowerCase()));
+    const staleSet = new Set(staleRes.rows.map((r: any) => (r.email || "").toLowerCase()));
+
+    console.log(`📊 DB Stats: ${whiteList.size} Active, ${blackList.size} Expired, ${staleSet.size} Stale Invites.`);
 
     console.log(`📊 DB Stats: ${whiteList.size} Active, ${blackList.size} Expired, ${safetyList.size} Admins/Safe.`);
 
@@ -175,14 +186,14 @@ async function kickEnforcer() {
         // 4. SCAN & SELECT (The "Brain")
         console.log("   🔍 Scanning DOM for targets...");
 
-        const scanResult = await page.evaluate((bgWhiteList: string[], bgBlackList: string[], bgSafetyList: string[]) => {
+        const scanResult = await page.evaluate((bgWhiteList: string[], bgBlackList: string[], bgSafetyList: string[], bgStaleList: string[]) => {
             const targets: string[] = [];
             const safeSet = new Set(bgSafetyList);
             const whiteSet = new Set(bgWhiteList);
             const blackSet = new Set(bgBlackList);
+            const staleSet = new Set(bgStaleList);
 
             // Find all rows (tr or div[role="row"])
-            // Strategy: Look for emails in page text
             const rows = Array.from(document.querySelectorAll('tbody tr, div[role="row"]'));
             let selectedCount = 0;
 
@@ -191,7 +202,6 @@ async function kickEnforcer() {
                 const text = htmlRow.innerText.toLowerCase();
                 // Extract Email
                 let email = "";
-                // Try from mailto?
                 const mailLink = row.querySelector('a[href^="mailto:"]');
                 if (mailLink) {
                     email = mailLink.getAttribute('href')?.replace('mailto:', '').split('?')[0].trim().toLowerCase() || "";
@@ -204,29 +214,35 @@ async function kickEnforcer() {
 
                 if (!email) return;
 
-                // SAFETY: CHECK FOR TEAM OWNER / ADMIN ROLE IN UI
-                if (text.includes('owner') || text.includes('pemilik') || text.includes('administrator') || text.includes('team owner')) {
-                    return;
-                }
+                // SAFETY
+                if (text.includes('owner') || text.includes('pemilik') || text.includes('administrator') || safeSet.has(email)) return;
 
-                // DECISION LOGIC
+                const isInvited = text.includes('invited') || text.includes('pending') || text.includes('diundang');
                 let reason = "";
-                if (safeSet.has(email)) return; // SAFE
-                if (blackSet.has(email)) reason = "EXPIRED";
-                else if (!whiteSet.has(email)) reason = "GHOST (Not in DB)";
+
+                if (isInvited) {
+                    // INVITE LOGIC
+                    if (staleSet.has(email)) reason = "STALE INVITE (> 1h)";
+                    else if (!whiteSet.has(email) && !blackSet.has(email)) reason = "GHOST INVITE (Not in DB)";
+                    // else: It's a valid new invite (Pending < 1h), leave it.
+                } else {
+                    // MEMBER LOGIC
+                    if (blackSet.has(email)) reason = "EXPIRED SUBSCRIPTION";
+                    else if (!whiteSet.has(email)) reason = "GHOST MEMBER (Not in DB)";
+                }
 
                 if (reason) {
                     // CLICK CHECKBOX
                     const checkbox = row.querySelector('input[type="checkbox"], input.UufAxw') as HTMLElement;
                     if (checkbox && !checkbox.hasAttribute('checked') && !checkbox.getAttribute('aria-checked')?.includes('true')) {
-                        checkbox.click(); // Select it!
+                        checkbox.click();
                         targets.push(`${email} [${reason}]`);
                         selectedCount++;
                     }
                 }
             });
             return { targets, selectedCount };
-        }, Array.from(whiteList), Array.from(blackList), Array.from(safetyList));
+        }, Array.from(whiteList), Array.from(blackList), Array.from(safetyList), Array.from(staleSet));
 
         console.log(`   🎯 Selected ${scanResult.selectedCount} users.`);
         if (scanResult.targets.length > 0) {
