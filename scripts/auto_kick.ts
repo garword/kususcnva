@@ -128,6 +128,10 @@ async function kickEnforcer() {
             try { await page.setUserAgent(fs.readFileSync('auth_user_agent.txt', 'utf-8').trim()); } catch (e) { }
         }
 
+        // ENABLE CONSOLE LOGS FROM BROWSER
+        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
+
         let isLoggedIn = false;
         if (fs.existsSync('auth_cookies.json')) {
             try {
@@ -211,22 +215,20 @@ async function kickEnforcer() {
                     email = mailLink.getAttribute('href')?.replace('mailto:', '').split('?')[0].trim().toLowerCase() || "";
                 }
 
-                // Extract Email - Strategy 2: Regex Scan on InnerText
+                // Strategy 2: Broad Regex on Row Content (textContent is safer than innerText for hidden elements)
                 if (!email) {
                     // Cleaner regex to find email in text
                     const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
 
                     // Prioritize specific cells if possible, otherwise scan full row
-                    const cells = Array.from(row.querySelectorAll('td, div[role="gridcell"], .cZc9Ng')); // Common Canva table classes
-                    let textToScan = text;
-
-                    if (cells.length > 0) {
-                        // Often the first cell has the Name/Email for pending invites
-                        textToScan = cells[0].textContent?.toLowerCase() || text;
-                    }
-
-                    const match = textToScan.match(emailRegex);
+                    const fullText = row.textContent?.toLowerCase() || "";
+                    const match = fullText.match(emailRegex);
                     if (match) email = match[0];
+                }
+
+                if (!email) {
+                    // console.log(`   ⚠️ No email found in Row ${idx}`);
+                    return;
                 }
 
                 if (!email) return;
