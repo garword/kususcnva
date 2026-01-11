@@ -319,7 +319,7 @@ async function kickEnforcer() {
                                 await randomDelay(1500, 2500); // Wait for filter
 
                                 // Check results
-                                const exists = await page.evaluate((checkEmail) => {
+                                const exists = await page.evaluate((checkEmail: string) => {
                                     const bodyText = document.body.innerText.toLowerCase();
                                     // If text says "No people found" or table is empty of that email
                                     // We look for specific row match to be sure
