@@ -1730,6 +1730,44 @@ bot.command("testkick", async (ctx) => {
     );
 });
 
+// Admin Command: Set Log Topic for Full Slot Notifications
+bot.command("addlogtopik", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const chatId = ctx.chat.id;
+    const threadId = ctx.message?.message_thread_id || null;
+    const type = ctx.chat.type;
+
+    try {
+        // Save Chat ID
+        await sql(`
+            INSERT INTO settings (key, value) VALUES ('slot_topic_chat_id', ?) 
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `, [String(chatId)]);
+
+        // Save Thread ID (if exists)
+        if (threadId) {
+            await sql(`
+                INSERT INTO settings (key, value) VALUES ('slot_topic_thread_id', ?) 
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            `, [String(threadId)]);
+        } else {
+            // Clear thread id if run in main chat
+            await sql("DELETE FROM settings WHERE key = 'slot_topic_thread_id'");
+        }
+
+        let msg = `✅ <b>Log Topik Berhasil Diset!</b>\n\n`;
+        msg += `📍 <b>Chat ID:</b> <code>${chatId}</code>\n`;
+        if (threadId) msg += `🧵 <b>Topic ID:</b> <code>${threadId}</code>\n`;
+        msg += `📢 Laporan "Slot Penuh" akan dikirim otomatis ke sini.`;
+
+        await ctx.reply(msg, { parse_mode: "HTML" });
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Gagal menyimpan setting: ${e.message}`);
+    }
+});
+
 // Admin Command: Export Data (Laporan Lengkap)
 bot.command("data", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;

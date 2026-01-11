@@ -177,6 +177,79 @@ async function syncMemberCount() {
         // Send Report
         await sendTelegram(`📊 <b>Team Sync Report</b>\nTotal: ${counts.total}\nActive: ${counts.active}\nPending: ${counts.pending}\n<i>Synced at: ${TimeUtils.format()}</i>`);
 
+        // ========================================================================
+        // 🚨 SLOT AVAILABILITY NOTIFICATION (Requested by User)
+        // ========================================================================
+        // Logic: If >= 480 members, check when next slot opens.
+        // Send to configured Topic ID.
+        if (counts.total >= 480) {
+            console.log(`⚠️ Team is NEAR FULL/FULL (${counts.total}/500). Checking Slot Notification...`);
+
+            // 1. Check Rate Limit (e.g. Once every 4 hours)
+            const lastNotifRes = await sql("SELECT value FROM settings WHERE key = 'last_slot_notif'");
+            const lastNotifStr = lastNotifRes.rows.length > 0 ? lastNotifRes.rows[0].value as string : null;
+            let shouldSend = true;
+
+            if (lastNotifStr) {
+                const lastDate = new Date(lastNotifStr);
+                const diffMs = Date.now() - lastDate.getTime();
+                const diffHours = diffMs / (1000 * 60 * 60);
+                if (diffHours < 4) {
+                    shouldSend = false;
+                    console.log(`   ⏳ Skipping notification (Cooldown: ${diffHours.toFixed(1)}/4 hours)`);
+                }
+            }
+
+            if (shouldSend) {
+                // 2. Predict Next Slot
+                const nextSlotRes = await sql(`SELECT MIN(end_date) as next_slot FROM subscriptions WHERE status = 'active' AND end_date > datetime('now')`);
+
+                let nextSlotMsg = "Tidak diketahui";
+                if (nextSlotRes.rows.length > 0 && nextSlotRes.rows[0].next_slot) {
+                    const dbDate = nextSlotRes.rows[0].next_slot as string;
+                    // Ensure valid date parsing for SQLite string
+                    const utcDate = new Date(dbDate.includes('T') ? dbDate : dbDate.replace(' ', 'T') + 'Z');
+                    nextSlotMsg = TimeUtils.format(utcDate);
+                }
+
+                // 3. Get Target Topic
+                const chatRes = await sql("SELECT value FROM settings WHERE key = 'slot_topic_chat_id'");
+                const threadRes = await sql("SELECT value FROM settings WHERE key = 'slot_topic_thread_id'");
+
+                if (chatRes.rows.length > 0) {
+                    const targetChat = chatRes.rows[0].value as string;
+                    const targetThread = threadRes.rows.length > 0 ? threadRes.rows[0].value as string : undefined;
+
+                    const alertMsg = `⚠️ <b>PERINGATAN SLOT TEAM</b>\n\n` +
+                        `👥 <b>Status:</b> ${counts.total} / 500 Member\n` +
+                        `⛔ <b>Kondisi:</b> ${counts.total >= 500 ? "PENUH (FULL)" : "HAMPIR PENUH"}\n\n` +
+                        `⏳ <b>Slot Berikutnya Tersedia:</b>\n` +
+                        `📅 ${nextSlotMsg}\n\n` +
+                        `<i>Sistem akan otomatis menghapus user yang expired pada tanggal tersebut.</i>`;
+
+                    // Send to Topic
+                    try {
+                        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                            chat_id: targetChat,
+                            message_thread_id: targetThread,
+                            text: alertMsg,
+                            parse_mode: 'HTML'
+                        });
+                        console.log(`   📢 Notification sent to Chat ${targetChat} (Thread: ${targetThread || 'Main'})`);
+
+                        // Update Rate Limit
+                        await sql(`INSERT INTO settings (key, value) VALUES ('last_slot_notif', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [new Date().toISOString()]);
+
+                    } catch (e: any) {
+                        console.error(`   ❌ Failed to send topic notification: ${e.message}`);
+                    }
+
+                } else {
+                    console.log("   ℹ️ No log topic configured (Use /addlogtopik).");
+                }
+            }
+        }
+
     } catch (e: any) {
         console.error("❌ Sync Failed:", e);
         await sendTelegram(`⚠️ <b>Sync Failed:</b> ${e.message}`);
