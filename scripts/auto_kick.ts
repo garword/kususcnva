@@ -215,14 +215,19 @@ async function kickEnforcer() {
                     email = mailLink.getAttribute('href')?.replace('mailto:', '').split('?')[0].trim().toLowerCase() || "";
                 }
 
-                // Strategy 2: Broad Regex on Row Content (textContent is safer than innerText for hidden elements)
+                // Strategy 2: Broad Regex on Row Content (Joined with spaces to prevent 'email.comStudent' merge)
                 if (!email) {
-                    // Cleaner regex to find email in text
                     const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
 
-                    // Prioritize specific cells if possible, otherwise scan full row
-                    const fullText = row.textContent?.toLowerCase() || "";
-                    const match = fullText.match(emailRegex);
+                    // Join text of all children with spaces to separate Email from Role/Name
+                    // Select all direct children or specific common cell types
+                    const cells = Array.from(row.querySelectorAll('td, div, span, p'));
+                    const fullText = cells.map(el => el.textContent || "").join(" ").toLowerCase();
+
+                    // Fallback to simple innerText if cells are empty (rare)
+                    const textToScan = fullText.length > 5 ? fullText : row.innerText.toLowerCase();
+
+                    const match = textToScan.match(emailRegex);
                     if (match) email = match[0];
                 }
 
