@@ -225,7 +225,7 @@ async function kickEnforcer() {
                     const fullText = cells.map(el => el.textContent || "").join(" ").toLowerCase();
 
                     // Fallback to simple innerText if cells are empty (rare)
-                    const textToScan = fullText.length > 5 ? fullText : row.innerText.toLowerCase();
+                    const textToScan = fullText.length > 5 ? fullText : htmlRow.innerText.toLowerCase();
 
                     const match = textToScan.match(emailRegex);
                     if (match) email = match[0];
