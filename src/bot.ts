@@ -1211,10 +1211,10 @@ bot.hears("📖 Panduan", async (ctx) => {
         `• Ulangi langkah (Pilih Paket -> Aktivasi).\n` +
         `• Bot otomatis mendeteksi akun lama & menambah durasi.\n\n` +
 
-        `<b>3️⃣ Menu & Command Penting:</b>\n` +
-        `• <b>📊 Cek Slot:</b> Cek sisa kuota tim Canva.\n` +
-        `• <b>👤 Profil Saya:</b> Cek masa aktif & link referral.\n` +
-        `• <code>/check_slot</code>: Cek slot via text.\n\n` +
+        `<b>3️⃣ Menu Admin (Khusus Owner):</b>\n` +
+        `• Ketik <code>/admin</code> atau klik tombol di panel bawah.\n` +
+        `• Gunakan fitur <b>Set Log Topik</b> untuk notifikasi info slot otomatis.\n` +
+        `• Gunakan fitur <b>Auto-Kick</b> untuk membersihkan member expired.\n\n` +
 
         `<i>💡 Tips: Admin tidak memungut biaya uang. Semua gratis via Poin!</i>`,
         { parse_mode: "HTML" }
@@ -1231,20 +1231,22 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
     const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
     const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
 
-    // ADMIN PANEL SUPER MENU
+    // ADMIN PANEL SUPER MENU (UPDATED)
     const adminKeyboard = new InlineKeyboard()
-        .text("📂 Export Data", "adm_export_data").text("⚙️ Cek Team ID", "adm_team_id").row()
-        .text("🍪 Status Cookie", "adm_cookie").text("📢 Broadcast", "adm_help_bc").row()
-        .text("💰 Manual Point", "adm_help_point").text("📋 List Channel", "adm_list_ch").row()
-        .text("💀 Force Expire", "adm_help_exp").text("📊 Info Slot", "check_slot_btn").row()
-        .text("🗑️ Menu Hapus", "adm_menu_del").row()
-        .text("🚀 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick");
+        .text("� Info Slot", "check_slot_btn").text("📢 Set Log Topik", "adm_help_log").row()
+        .text("☠️ Force Expire", "adm_help_exp").text("�️ Menu Hapus", "adm_menu_del").row()
+        .text("� Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
+        .text("🍪 Status Cookie", "adm_cookie").text("⚙️ Cek Team ID", "adm_team_id").row()
+        .text("� Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch");
 
     await ctx.reply(
-        `<b>Panel Admin Super</b>\n\n` +
+        `<b>Panel Admin Super v2.0</b>\n\n` +
         `🆔 Team ID: <code>${teamId}</code>\n` +
         `📊 Status Slot: ${slotInfo}\n\n` +
-        `Silakan pilih menu di bawah untuk aksi cepat atau panduan command.`,
+        `👇 <b>Panduan Cepat Link:</b>\n` +
+        `• <b>Set Log Topik:</b> Set notifikasi warning slot penuh.\n` +
+        `• <b>Force Expire:</b> Test kick user.\n` +
+        `• <b>Menu Hapus:</b> (Hati-hati) Hard/Soft Delete user.\n`,
         {
             parse_mode: "HTML",
             reply_markup: adminKeyboard
@@ -1389,6 +1391,20 @@ bot.callbackQuery("adm_help_reset_email", async (ctx) => {
         `♻️ <b>Soft Reset Email:</b>\n\n` +
         `Gunakan ini jika user ingin ganti email atau re-subscribe tanpa hilang poin.\n` +
         `Command: <code>/reset_email user@gmail.com</code>`,
+        { parse_mode: "HTML" }
+    );
+    await ctx.answerCallbackQuery();
+});
+
+// Helper: Admin Log Topic Guide
+bot.callbackQuery("adm_help_log", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply(
+        `📢 <b>Cara Set Topik Notifikasi:</b>\n\n` +
+        `1. Masuk ke Grup/Topik tujuan.\n` +
+        `2. Pastikan Bot sudah di grup tersebut.\n` +
+        `3. Ketik command: <code>/addlogtopik</code>\n\n` +
+        `Bot akan otomatis mengirim peringatan "Slot Hampir Penuh" ke sana.`,
         { parse_mode: "HTML" }
     );
     await ctx.answerCallbackQuery();
