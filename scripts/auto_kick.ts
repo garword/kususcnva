@@ -166,34 +166,29 @@ async function kickEnforcer() {
         }
 
         // 3. SCROLL LOADER (The "Heavy" Lift)
-        console.log("   📜 Scrolling to load ALL members...");
+        // 3. SCROLL LOADER (The "Heavy" Lift)
+        console.log(`   📍 Current URL: ${page.url()}`);
+        console.log("   📜 Scrolling to load ALL members (Force Mode)...");
         await page.evaluate(async () => {
             await new Promise<void>((resolve) => {
                 let totalHeight = 0;
                 const distance = 100;
-                let noScrollCount = 0;
+
+                // Force scroll for specific amount or until very high limit
                 const timer = setInterval(() => {
-                    const scrollHeightBefore = (document as any).body.scrollHeight;
                     (window as any).scrollBy(0, distance);
                     totalHeight += distance;
 
-                    if (((window as any).innerHeight + (window as any).scrollY) >= scrollHeightBefore - 50) {
-                        noScrollCount++;
-                        // Increase patience: Wait 100 * 50ms = 5s (was 2.5s)
-                        if (noScrollCount > 100) {
-                            clearInterval(timer);
-                            resolve();
-                        }
-                    } else {
-                        noScrollCount = 0;
-                    }
-
-                    // Safety break: Increase to 200,000px (approx 4000 members)
+                    // Safety break
                     if (totalHeight >= 200000) { clearInterval(timer); resolve(); }
+
                 }, 50);
+
+                // FORCE RESOLVE after 20 seconds (Matches 'Sync' reliability)
+                setTimeout(() => { clearInterval(timer); resolve(); }, 20000);
             });
         });
-        await randomDelay(2000, 3000);
+        await randomDelay(5000, 8000); // Wait for DOM to settle
         console.log("   ✅ Scroll Complete.");
 
         // 4. SCAN & SELECT (The "Brain")
