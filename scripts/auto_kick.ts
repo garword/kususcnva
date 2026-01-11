@@ -129,7 +129,7 @@ async function kickEnforcer() {
         }
 
         // ENABLE CONSOLE LOGS FROM BROWSER
-        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+        page.on('console', (msg: any) => console.log('PAGE LOG:', msg.text()));
 
 
         let isLoggedIn = false;
