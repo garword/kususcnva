@@ -1234,11 +1234,11 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
 
     // ADMIN PANEL SUPER MENU (UPDATED)
     const adminKeyboard = new InlineKeyboard()
-        .text("� Info Slot", "check_slot_btn").text("📢 Set Log Topik", "adm_help_log").row()
-        .text("☠️ Force Expire", "adm_help_exp").text("�️ Menu Hapus", "adm_menu_del").row()
-        .text("� Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
+        .text("📊 Info Slot", "check_slot_btn").text("📢 Set Log Topik", "adm_help_log").row()
+        .text("☠️ Force Expire", "adm_help_exp").text("🗑️ Menu Hapus", "adm_menu_del").row()
+        .text("🧪 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
         .text("🍪 Status Cookie", "adm_cookie").text("⚙️ Cek Team ID", "adm_team_id").row()
-        .text("� Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch").row().text("➕ Add Point Manual", "adm_help_addpoint");
+        .text("💾 Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch").row().text("➕ Add Point Manual", "adm_help_addpoint");
 
     await ctx.reply(
         `<b>Panel Admin Super v2.0</b>\n\n` +
