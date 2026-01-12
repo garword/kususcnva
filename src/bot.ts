@@ -1129,14 +1129,14 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
 
     // Ambil Team ID dari DB
     const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-    const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
+    const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Multi-Node Mode";
 
     // ADMIN PANEL SUPER MENU (UPDATED)
     const adminKeyboard = new InlineKeyboard()
         .text("📊 Info Slot", "check_slot_btn").text("📢 Set Log Topik", "adm_help_log").row()
         .text("☠️ Force Expire", "adm_help_exp").text("🗑️ Menu Hapus", "adm_menu_del").row()
         .text("🧪 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
-        .text("🍪 Status Cookie", "adm_cookie").text("⚙️ Cek Team ID", "adm_team_id").row()
+        .text("🍪 Status Cookie", "adm_cookie").text("🏭 List Accounts", "adm_list_accounts").row()
         .text("💾 Export Data", "adm_export_data").text("📋 List Channel", "adm_list_ch").row().text("➕ Add Point Manual", "adm_help_addpoint");
 
     await ctx.reply(
@@ -1930,6 +1930,48 @@ bot.callbackQuery("test_kick", async (ctx) => {
         });
     }
     await ctx.answerCallbackQuery();
+});
+
+// Callback: Trigger /listaccounts from button
+bot.callbackQuery("adm_list_accounts", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+
+    // Call the logic of listaccounts
+    // Since we can't easily invoke .command(), we copy logic or redirect
+    // Reuse logic:
+    try {
+        const res = await sql("SELECT * FROM canva_accounts ORDER BY id ASC");
+        if (res.rows.length === 0) {
+            await ctx.reply("❌ Belum ada akun terdaftar.");
+            return ctx.answerCallbackQuery();
+        }
+
+        let msg = `🏭 <b>Daftar Node Canva (${res.rows.length})</b>\n\n`;
+        const keyboard = new InlineKeyboard();
+
+        for (const acc of res.rows) {
+            const status = acc.is_active ? "🟢 Aktif" : "🔴 Nonaktif";
+            const usage = `${acc.member_count}/${acc.max_slots}`;
+            const info = acc.email ? acc.email : "(Belum Terdeteksi)";
+            const team = acc.team_id ? `Team: ${acc.team_id}` : "";
+
+            msg += `<b>Node #${acc.id}</b> ${status}\n`;
+            msg += `📧 ${info}\n`;
+            msg += `👥 Slot: <b>${usage}</b>\n`;
+            if (team) msg += `🆔 ${team}\n`;
+            msg += `🕒 Last Used: ${acc.last_used || 'Never'}\n\n`;
+
+            // Add Delete Button
+            keyboard.text(`🗑️ Hapus Node #${acc.id}`, `del_node_${acc.id}`).row();
+        }
+
+        msg += `Gunakan <code>/addaccount</code> untuk tambah.`;
+        await ctx.reply(msg, { parse_mode: "HTML", reply_markup: keyboard });
+        await ctx.answerCallbackQuery();
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
 });
 
 // ============================================================
