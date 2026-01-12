@@ -1350,6 +1350,22 @@ bot.callbackQuery("adm_cookie", async (ctx) => {
     await ctx.answerCallbackQuery();
 });
 
+// Command: Debug Admin Status (Public)
+bot.command("debug", async (ctx) => {
+    const userId = ctx.from?.id || 0;
+    const adminIdEnv = process.env.ADMIN_ID || "NOT SET";
+    const isAdminUser = isAdmin(userId);
+
+    await ctx.reply(
+        `🕵️ <b>Debug Info</b>\n\n` +
+        `👤 User ID: <code>${userId}</code>\n` +
+        `🔑 Configured Admin ID: <code>${adminIdEnv.substring(0, 3)}***</code>\n` +
+        `🛡️ Is Admin? <b>${isAdminUser ? "YES ✅" : "NO ❌"}</b>\n\n` +
+        `Jika NO, pastikan ADMIN_ID di Vercel Settings sama dengan User ID Anda.`,
+        { parse_mode: "HTML" }
+    );
+});
+
 // Command: Set User-Agent
 bot.command("setua", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
