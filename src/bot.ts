@@ -226,7 +226,7 @@ bot.command("start", async (ctx) => {
     // 2. Simpan/Update User ke Database (Upsert)
     // Force selected_product_id = NULL for new users to enforce selection
     await sql(
-        `INSERT INTO users (id, username, first_name, selected_product_id, joined_at) VALUES (?, ?, ?, NULL, datetime('now'))
+        `INSERT INTO users (id, username, first_name, selected_product_id, joined_at) VALUES (?, ?, ?, NULL, datetime('now', '+7 hours'))
      ON CONFLICT(id) DO UPDATE SET username = ?, first_name = ?`,
         [userId, username, firstName, username, firstName]
     );
@@ -520,7 +520,7 @@ async function checkTeamLimit(): Promise<{ isFull: boolean, nextSlot: string | n
         const slotRes = await sql(`
             SELECT MIN(end_date) as next_slot 
             FROM subscriptions 
-            WHERE status = 'active' AND end_date > datetime('now')
+            WHERE status = 'active' AND end_date > datetime('now', '+7 hours')
         `);
 
         let nextSlotStr = "Tidak diketahui";
@@ -601,7 +601,7 @@ async function handleActivation(ctx: any, emailInput: string) {
 
         // 1. Ambil Subscription Aktif (Jika Ada)
         const subRes = await sql(
-            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now')`,
+            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now', '+7 hours')`,
             [userId]
         );
         const activeSub = subRes.rows.length > 0 ? subRes.rows[0] : null;
@@ -1736,7 +1736,7 @@ bot.command("forceexpire", async (ctx) => {
         const userId = userRes.rows[0].id;
 
         // Update Subscription jadi Expired (H+2 Menit untuk Test Realtime Kick)
-        await sql("UPDATE subscriptions SET end_date = datetime('now', '+2 minutes'), status = 'active' WHERE user_id = ?", [userId]);
+        await sql("UPDATE subscriptions SET end_date = datetime('now', '+7 hours', '+2 minutes'), status = 'active' WHERE user_id = ?", [userId]);
 
         await ctx.reply(`✅ User <b>${email}</b> akan EXPIRED dalam 2 menit.\nSilakan pantau Auto-Kick.`, { parse_mode: "HTML" });
     } catch (e: any) {

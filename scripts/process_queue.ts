@@ -148,7 +148,7 @@ async function runPuppeteerQueue() {
         FROM subscriptions s 
         JOIN users u ON s.user_id = u.id 
         JOIN products p ON s.product_id = p.id 
-        WHERE s.end_date < datetime('now') AND s.status = 'active'
+        WHERE s.end_date < datetime('now', '+7 hours') AND s.status = 'active'
     `);
 
     if (pendingInvites.rows.length === 0 && expiredUsers.rows.length === 0) {
@@ -633,7 +633,7 @@ async function runPuppeteerQueue() {
 
                     try {
                         // DB UPDATE (Subscription + Active Status)
-                        const recentSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND product_id = ? AND start_date > datetime('now', '-1 hour')`, [userId, prodId]);
+                        const recentSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND product_id = ? AND start_date > datetime('now', '+7 hours', '-1 hour')`, [userId, prodId]);
 
                         if (recentSubRes.rows.length === 0) {
                             const subId = `sub_${Date.now()}_${userId}`;

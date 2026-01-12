@@ -66,7 +66,8 @@ async function syncMemberCount() {
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--start-maximized',
-            '--disable-notifications'
+            '--disable-notifications',
+            '--timezone=Asia/Jakarta'
         ]
     });
 
@@ -203,7 +204,7 @@ async function syncMemberCount() {
 
             if (shouldSend) {
                 // 2. Predict Next Slot
-                const nextSlotRes = await sql(`SELECT MIN(end_date) as next_slot FROM subscriptions WHERE status = 'active' AND end_date > datetime('now')`);
+                const nextSlotRes = await sql(`SELECT MIN(end_date) as next_slot FROM subscriptions WHERE status = 'active' AND end_date > datetime('now', '+7 hours')`);
 
                 let nextSlotMsg = "Tidak diketahui";
                 if (nextSlotRes.rows.length > 0 && nextSlotRes.rows[0].next_slot) {

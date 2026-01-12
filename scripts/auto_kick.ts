@@ -59,7 +59,7 @@ async function kickEnforcer() {
     console.log(`[${TimeUtils.format()}] 👮 Auto-Kick ENFORCER Mode Started...`);
 
     // 0. PRE-KICK: Update Expired Status (Self-healing)
-    await sql(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND end_date < datetime('now')`);
+    await sql(`UPDATE subscriptions SET status = 'expired' WHERE status = 'active' AND end_date < datetime('now', '+7 hours')`);
 
     // 0.1 Prepare Memory Lists
     // WhiteList: Active Subscriptions + Pending Invites (Don't kick new invites)
@@ -71,7 +71,7 @@ async function kickEnforcer() {
     const expiredSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'expired'`);
 
     // NEW: Stale Invites (> 1 hour pending)
-    const staleRes = await sql(`SELECT email FROM users WHERE status = 'pending_invite' AND joined_at < datetime('now', '-1 hour')`);
+    const staleRes = await sql(`SELECT email FROM users WHERE status = 'pending_invite' AND joined_at < datetime('now', '+7 hours', '-1 hour')`);
 
     // Safety List: Admins + Bot Account + Manual Whitelist (if any)
     const adminRes = await sql(`SELECT email FROM users WHERE role = 'admin'`);
