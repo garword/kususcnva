@@ -91,7 +91,7 @@ async function kickEnforcer() {
     // 1.5. RESTORE SESSION FROM DB (Prioritize DB over Env/File)
     // This bridges the gap between Bot /set_cookie and this Script
     try {
-        const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookies'");
+        const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
         if (cookieRes.rows.length > 0) {
             console.log("   📥 Fetched fresh cookies from Database.");
             fs.writeFileSync('auth_cookies.json', cookieRes.rows[0].value as string);
