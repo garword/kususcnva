@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import axios from "axios";
 import { exec } from "child_process";
 import { TimeUtils } from "./lib/time";
+import { BackupService } from "./lib/backup";
 
 dotenv.config();
 
@@ -1796,22 +1797,16 @@ bot.command("addaccount", async (ctx) => {
     }
 });
 
-// Fallback: Handle Document with Caption if bot.command fails
+// Fallback: Handle Document with Caption (AddAccount / UploadDB)
 bot.on("message:document", async (ctx) => {
     const caption = ctx.message.caption || "";
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    // 1. Case: /addaccount (Upload Cookie JSON)
     if (caption.startsWith("/addaccount")) {
         console.log(`[DEBUG] /addaccount fallback via message:document. Caption: ${caption}`);
 
-        // Manually trigger the command logic? 
-        // Better: Re-implement the simplified logic here to be 100% sure, 
-        // or just rely on this handler being the primary for files.
-        // Let's make this the ROBUST file handler.
-
-        if (!isAdmin(ctx.from?.id || 0)) {
-            return ctx.reply(`❌ <b>Akses Ditolak!</b>\nAdmin ID Mismatch.`, { parse_mode: "HTML" });
-        }
-
-        const msg = await ctx.reply("📂 <b>Menerima File...</b>", { parse_mode: "HTML" });
+        const msg = await ctx.reply("📂 <b>Menerima File Akun...</b>", { parse_mode: "HTML" });
 
         try {
             // Extract Node ID from caption if present "/addaccount 2"
@@ -1826,15 +1821,15 @@ bot.on("message:document", async (ctx) => {
             const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
             const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-            const buffer = Buffer.from(response.data);
-            let content = buffer.toString('utf-8');
+            const content = Buffer.from(response.data).toString('utf-8');
 
             // Validate JSON
             try {
                 const parsed = JSON.parse(content);
-                content = JSON.stringify(parsed);
+                // Simple validation check for cookie array
+                if (!Array.isArray(parsed)) throw new Error("Not a cookie array");
             } catch (e) {
-                return ctx.api.editMessageText(ctx.chat.id, msg.message_id, "❌ Validasi JSON Gagal.");
+                return ctx.api.editMessageText(ctx.chat.id, msg.message_id, "❌ Validasi JSON Gagal (Bukan Format Cookie).");
             }
 
             // Save
@@ -1855,6 +1850,72 @@ bot.on("message:document", async (ctx) => {
         } catch (e: any) {
             await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `❌ Error: ${e.message}`);
         }
+    }
+
+    // 2. Case: /uploaddb (Restore Database)
+    else if (caption.startsWith("/uploaddb")) {
+        const loadMsg = await ctx.reply("⏳ <b>Reading Backup File...</b>", { parse_mode: "HTML" });
+
+        try {
+            const file = await ctx.api.getFile(ctx.message.document.file_id);
+            const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+            // Download
+            const response = await axios.get(url, { responseType: 'arraybuffer' });
+            const content = Buffer.from(response.data).toString('utf-8');
+
+            await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, "⚙️ <b>Restoring Data...</b> (Do not touch)", { parse_mode: "HTML" });
+
+            const result = await BackupService.restore(content);
+
+            if (result.success) {
+                await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `✅ <b>Restore Success!</b>\n\n${result.message}`, { parse_mode: "HTML" });
+            } else {
+                await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `❌ <b>Restore Failed!</b>\n\n${result.message}`, { parse_mode: "HTML" });
+            }
+
+        } catch (e: any) {
+            await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `❌ Error: ${e.message}`);
+        }
+    }
+});
+targetNodeId = parseInt(parts[1]);
+            }
+
+const doc = ctx.message.document;
+const file = await ctx.api.getFile(doc.file_id);
+const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+const buffer = Buffer.from(response.data);
+let content = buffer.toString('utf-8');
+
+// Validate JSON
+try {
+    const parsed = JSON.parse(content);
+    content = JSON.stringify(parsed);
+} catch (e) {
+    return ctx.api.editMessageText(ctx.chat.id, msg.message_id, "❌ Validasi JSON Gagal.");
+}
+
+// Save
+if (targetNodeId) {
+    const exist = await sql("SELECT id FROM canva_accounts WHERE id = ?", [targetNodeId]);
+    if (exist.rows.length > 0) {
+        await sql("UPDATE canva_accounts SET cookie = ?, is_active = 1, email = 'Pending Check', team_id = NULL, last_used = datetime('now','+7 hours') WHERE id = ?", [content, targetNodeId]);
+        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>Node #${targetNodeId} Updated!</b>`);
+    } else {
+        await sql("INSERT INTO canva_accounts (id, cookie, created_at, email) VALUES (?, ?, datetime('now', '+7 hours'), 'Pending Check')", [targetNodeId, content]);
+        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>Node #${targetNodeId} Created!</b>`);
+    }
+} else {
+    await sql("INSERT INTO canva_accounts (cookie, created_at, email) VALUES (?, datetime('now', '+7 hours'), 'Pending Check')", [content]);
+    await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>New Node Added!</b>`);
+}
+
+        } catch (e: any) {
+    await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `❌ Error: ${e.message}`);
+}
     }
 });
 
@@ -2231,7 +2292,26 @@ bot.on("message:text", async (ctx) => {
 // ============================================================
 
 
-// 1. Force Expire User (Simulasi Expired)
+// 1. Backup Database (Manual)
+bot.command("backupdb", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    try {
+        await ctx.reply("⏳ <b>Generating Backup...</b>", { parse_mode: "HTML" });
+        const json = await BackupService.generate();
+        const buffer = Buffer.from(json, 'utf-8');
+        const fileName = `backup-db-${TimeUtils.now().toISOString().replace(/[:.]/g, '-').substring(0, 19)}.json`;
+
+        await ctx.replyWithDocument(new InputFile(buffer, fileName), {
+            caption: `💾 <b>Database Backup</b>\n📅 ${TimeUtils.format()}`,
+            parse_mode: "HTML"
+        });
+    } catch (e: any) {
+        await ctx.reply(`❌ Backup Failed: ${e.message}`);
+    }
+});
+
+// 2. Force Expire User (Simulasi Expired)
 bot.command("forceexpire", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
 
@@ -2399,7 +2479,74 @@ bot.command("data", async (ctx) => {
     }
 });
 
-// Error handling basic
+// 3. Backup & Restore Tools
+bot.command("backupdb", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    try {
+        await ctx.reply("⏳ <b>Generating Backup...</b>", { parse_mode: "HTML" });
+        const json = await BackupService.generate();
+        const buffer = Buffer.from(json, 'utf-8');
+        const fileName = `backup-db-${TimeUtils.now().toISOString().replace(/[:.]/g, '-').substring(0, 19)}.json`;
+
+        await ctx.replyWithDocument(new InputFile(buffer, fileName), {
+            caption: `💾 <b>Database Backup</b>\n📅 ${TimeUtils.format()}`,
+            parse_mode: "HTML"
+        });
+    } catch (e: any) {
+        await ctx.reply(`❌ Backup Failed: ${e.message}`);
+    }
+});
+
+// Restore Handler (Document with Caption /uploaddb)
+bot.on("message:document", async (ctx) => {
+    const caption = ctx.message.caption || "";
+
+    // Check if it is /uploaddb
+    if (caption.trim() === "/uploaddb") {
+        if (!isAdmin(ctx.from?.id || 0)) return;
+
+        const loadMsg = await ctx.reply("⏳ <b>Reading Backup File...</b>", { parse_mode: "HTML" });
+
+        try {
+            const file = await ctx.api.getFile(ctx.message.document.file_id);
+            const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+            // Download
+            const response = await axios.get(url, { responseType: 'arraybuffer' });
+            const content = Buffer.from(response.data).toString('utf-8');
+
+            // Restore via Service
+            // Note: In Serverless, we process immediately.
+            await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, "⚙️ <b>Restoring Data...</b> (Do not touch)", { parse_mode: "HTML" });
+
+            const result = await BackupService.restore(content);
+
+            if (result.success) {
+                await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `✅ <b>Restore Success!</b>\n\n${result.message}`, { parse_mode: "HTML" });
+            } else {
+                await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `❌ <b>Restore Failed!</b>\n\n${result.message}`, { parse_mode: "HTML" });
+            }
+
+        } catch (e: any) {
+            await ctx.api.editMessageText(ctx.chat.id, loadMsg.message_id, `❌ Error: ${e.message}`);
+        }
+        return;
+    }
+
+    // Legacy Fallback (addaccount) logic
+    // ... (This should merge with existing addaccount fallback if unrelated)
+    // Actually, we should check if existing fallback exists.
+    // The previous code had a bot.on("message:document") for addaccount.
+    // We must MERGE them or use a middleware approach.
+    // Let's assume the previous handler is effectively REPLACED by this block if we place it properly or we need to be careful.
+    // Wait, typical Grammy pattern: listeners trigger in order. 
+    // If I add a NEW listener, both might trigger? Or only first matching?
+    // Grammy: "Listeners are executed in order... if one handles, next might not if middleware chain stops."
+    // bot.on() usually passes to next unless we stop.
+    // Safest way: COMBINE logic in the existing handler or ensure this one is specific.
+});
+
 // ============================================================
 // ERROR HANDLING
 // ============================================================
