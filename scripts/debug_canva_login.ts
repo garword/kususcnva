@@ -99,15 +99,23 @@ async function run() {
     console.log("   ⚠️ Using default fallback URL for invites.");
 
     // FORCE SAVE TO DB
-    console.log("\n💾 FORCE SAVING Credentials to Database...");
+    console.log("\n💾 SAVING Credentials to Database (Table: canva_accounts)...");
 
-    // Save Cookie
-    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieString]);
-    console.log("   ✅ Cookie Saved.");
+    const emailPlaceholder = "Debug-Account-" + Date.now();
+    let detectedTeamId = null;
 
-    // DELETE Team ID (Force fallback)
-    await sql("DELETE FROM settings WHERE key = 'canva_team_id'");
-    console.log("   ✅ Team ID Removed from DB (Forcing default UI).");
+    // Try to detect Team ID from URL
+    const teamMatch = url.match(/brand\/([^\/]+)/);
+    if (teamMatch) detectedTeamId = teamMatch[1];
+    console.log(`🆔 Detected Team ID: ${detectedTeamId || "None"}`);
+
+    // Insert
+    await sql(
+        `INSERT INTO canva_accounts (cookie, team_id, email, is_active, created_at, last_used) 
+         VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))`,
+        [cookieString, detectedTeamId, emailPlaceholder]
+    );
+    console.log("   ✅ Cookie Saved to Multi-Account Table.");
 
     console.log("\n🎉 SETUP COMPLETE!");
     console.log("   Browser will close in 30 seconds...");

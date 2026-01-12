@@ -3,8 +3,15 @@ import { sql } from '../lib/db';
 
 (async () => {
     console.log("🛠️ FORCING TEAM FULL STATE...");
-    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('team_member_count', '500')");
-    console.log("✅ Set team_member_count = 500");
+    // await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('team_member_count', '500')");
+    // Multi-Account Update: Fill the first account
+    const res = await sql("SELECT id FROM canva_accounts WHERE is_active = 1 LIMIT 1");
+    if (res.rows.length > 0) {
+        await sql("UPDATE canva_accounts SET member_count = 500 WHERE id = ?", [res.rows[0].id]);
+        console.log(`✅ Set Account #${res.rows[0].id} member_count = 500`);
+    } else {
+        console.log("❌ No active account found to fill.");
+    }
 
     // Add a dummy active sub expiring tomorrow for "Next Slot" calculation
     await sql("INSERT OR IGNORE INTO users (id, username, first_name) VALUES (99999, 'TestUser', 'Test')");

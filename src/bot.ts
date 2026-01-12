@@ -169,34 +169,9 @@ bot.hears("📖 Panduan", async (ctx) => {
     await ctx.reply(msg, { parse_mode: "HTML" });
 });
 
-// Admin Command: Set Cookie
+// Admin// Command: Set Cookie (Legacy - Deprecated)
 bot.command("set_cookie", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
-
-    // 1. Cek jika ada file dokumen (JSON)
-    if (ctx.message?.document) {
-        const file = await ctx.getFile();
-        const path = file.file_path;
-        if (!path) return ctx.reply("❌ Gagal mengambil file.");
-
-        // Download file content via URL
-        const fileUrl = `https://api.telegram.org/file/bot${token}/${path}`;
-        try {
-            const { data } = await axios.get(fileUrl);
-            const cookieStr = typeof data === 'string' ? data : JSON.stringify(data);
-
-            // Validasi JSON minimal
-            JSON.parse(cookieStr); // Check valid JSON
-
-            // Simpan ke DB
-            await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [cookieStr]);
-            await ctx.reply("✅ <b>Cookie Berhasil Disimpan!</b>\nBot dan GitHub Actions sekarang akan menggunakan cookie ini.", { parse_mode: "HTML" });
-        } catch (e) {
-            await ctx.reply("❌ Gagal parsing atau download cookie. Pastikan format JSON valid.");
-        }
-        return;
-    }
-
     await ctx.reply(
         "⚠️ <b>Command Berubah!</b>\n\n" +
         "Sistem sekarang mendukung <b>Multi-Akun</b>.\n" +
