@@ -145,9 +145,11 @@ async function syncMemberCount() {
                     const brandMatch = currentUrl.match(/brand\/([a-zA-Z0-9_-]+)/);
                     const detectedTeamId = brandMatch ? brandMatch[1] : null;
 
-                    // 2. Capture Email (If missing)
+                    // 2. Capture Email (If missing or Pending)
                     let detectedEmail = null;
-                    if (!account.email || account.email === 'Unknown') {
+                    const isEmailMissing = !account.email || account.email === 'Unknown' || account.email.includes('Pending');
+
+                    if (isEmailMissing) {
                         try {
                             console.log("   📧 Checking Email settings...");
                             await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2', timeout: 30000 });
