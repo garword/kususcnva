@@ -170,13 +170,29 @@ bot.hears("📖 Panduan", async (ctx) => {
 });
 
 // Handler: Donasi Button
+// Handler: Donasi Button
 bot.hears("💸 Donasi", async (ctx) => {
     try {
         const res = await sql("SELECT value FROM settings WHERE key = 'custom_donation_msg'");
         const donasiMsg = res.rows.length > 0 ? res.rows[0].value : null;
 
         if (donasiMsg) {
-            await ctx.reply(donasiMsg as string, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+            // Try Parse JSON (New Format)
+            try {
+                const data = JSON.parse(donasiMsg as string);
+                if (data.type === 'photo') {
+                    await ctx.replyWithPhoto(data.file_id, {
+                        caption: data.caption || "",
+                        parse_mode: "HTML"
+                    });
+                } else {
+                    // JSON but text type
+                    await ctx.reply(data.content, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+                }
+            } catch (e) {
+                // Fallback: Legacy Plain Text
+                await ctx.reply(donasiMsg as string, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+            }
         } else {
             // Default Message if not set
             await ctx.reply(
@@ -192,30 +208,54 @@ bot.hears("💸 Donasi", async (ctx) => {
 });
 
 // Admin Command: Set Donasi (Reply Mode)
+// Admin Command: Set Donasi (Reply Mode)
 bot.command("setdonasi", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
 
     const reply = ctx.message?.reply_to_message;
-    // Check if replying to text
-    if (!reply || !reply.text) {
+    // Check if replying to something valid
+    if (!reply) {
         return ctx.reply(
             "⚠️ <b>Cara Pakai Salah!</b>\n\n" +
-            "1. Tulis pesan donasi (bisa teks/HTML).\n" +
+            "1. Kirim Gambar (QRIS) atau Teks pesan donasi.\n" +
             "2. Reply pesan tersebut dengan <code>/setdonasi</code>\n\n" +
-            "<i>Fitur ini mengambil teks dari pesan yang Anda reply.</i>",
+            "<i>Fitur ini mendukung Teks, HTML, dan Gambar/Foto.</i>",
             { parse_mode: "HTML" }
         );
     }
 
-    const content = reply.text; // Get content from replied message
+    let storageValue = "";
+
+    // 1. Check Photo
+    if (reply.photo && reply.photo.length > 0) {
+        const photo = reply.photo[reply.photo.length - 1]; // Get highest quality
+        const payload = {
+            type: "photo",
+            file_id: photo.file_id,
+            caption: reply.caption || reply.text || "" // Use caption if photo, or text if mixed (rare)
+        };
+        storageValue = JSON.stringify(payload);
+    }
+    // 2. Check Text
+    else if (reply.text) {
+        const payload = {
+            type: "text",
+            content: reply.text
+        };
+        storageValue = JSON.stringify(payload);
+    }
+    // 3. Fallback
+    else {
+        return ctx.reply("❌ Jenis pesan tidak didukung. Mohon reply Teks atau Gambar.");
+    }
 
     // Save to DB
     try {
         await sql(
             "INSERT INTO settings (key, value) VALUES ('custom_donation_msg', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
-            [content, content]
+            [storageValue, storageValue]
         );
-        await ctx.reply("✅ <b>Pesan Donasi Berhasil Disimpan!</b>\nSilakan cek tombol Donasi sekarang.", { parse_mode: "HTML" });
+        await ctx.reply("✅ <b>Pesan Donasi Berhasil Disimpan!</b>\nSekarang support QRIS/Gambar.", { parse_mode: "HTML" });
     } catch (e: any) {
         await ctx.reply(`❌ Error DB: ${e.message}`);
     }
