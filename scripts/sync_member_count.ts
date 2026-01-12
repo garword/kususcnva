@@ -163,6 +163,9 @@ async function syncMemberCount() {
                             if (detectedTeamId || account.team_id) {
                                 const tid = detectedTeamId || account.team_id;
                                 await page.goto(`https://www.canva.com/brand/${tid}/people`, { waitUntil: 'domcontentloaded' });
+                            } else {
+                                // Fallback if Team ID not found yet: Go to generic People settings (Redirects automatically)
+                                await page.goto("https://www.canva.com/settings/people", { waitUntil: 'networkidle2' });
                             }
                         } catch (e) { console.log("   ⚠️ Email check failed:", e); }
                     }
