@@ -802,6 +802,21 @@ async function runPuppeteerQueue() {
             }
         }
 
+
+        // ========================================================================
+        // SESSION ROLLING (AUTO-REFRESH COOKIE)
+        // ========================================================================
+        try {
+            const currentCookies = await page.cookies();
+            if (currentCookies.length > 0) {
+                const cookieJson = JSON.stringify(currentCookies);
+                await sql("INSERT INTO settings (key, value) VALUES ('canva_cookie', ?) ON CONFLICT(key) DO UPDATE SET value = ?", [cookieJson, cookieJson]);
+                console.log("🍪 [SESSION] Cookies Auto-Refreshed & Saved to DB! (Session Extended)");
+            }
+        } catch (e) {
+            console.error("⚠️ Failed to auto-save cookies:", e);
+        }
+
         await browser.close();
 
         const summary = `
