@@ -1685,12 +1685,22 @@ bot.command("addaccount", async (ctx) => {
             const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
 
             // Download Content
-            const response = await axios.get(downloadUrl, { responseType: 'text' });
-            let content = response.data;
+            const response = await axios.get(downloadUrl, {
+                responseType: 'arraybuffer' // Get raw buffer to avoid axios auto-parsing JSON
+            });
+            const buffer = Buffer.from(response.data);
+            let content = buffer.toString('utf-8');
 
-            // Ensure String format for DB
-            if (typeof content === 'object') {
-                content = JSON.stringify(content);
+            // Validate simple JSON format (must be array or object)
+            try {
+                const parsed = JSON.parse(content);
+                // Minify storage to save space and standard format
+                content = JSON.stringify(parsed);
+            } catch (e) {
+                // If not JSON, assume raw string or error.
+                // User said "Only need cookie json format", so if it fails parse, it might be invalid.
+                // But let's trust the user knows what they are uploading for now or warn them.
+                return ctx.reply("❌ <b>Format Salah!</b> file bukan JSON valid.");
             }
 
             cookieStr = content;
