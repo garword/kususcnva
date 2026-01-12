@@ -1,11 +1,27 @@
 /**
  * Cloudflare Worker: Auto-Trigger Session Rolling (GitHub Actions)
- * Trigger: Every 1 Day (e.g. 00:00 UTC)
+ * 
+ * ⚙️ SETTING JADWAL (CRON TRIGGER):
+ * Agar berjalan OTOMATIS setiap 1 Hari (Daily) jam 00:00 WIB:
+ * Masukkan Cron ini di Cloudflare Dashboard > Triggers:
+ * 
+ *    0 17 * * *
+ * 
+ * (Penjelasan: 17:00 UTC = 00:00 WIB Hari Berikutnya)
  */
 
 export default {
     async scheduled(event, env, ctx) {
-        console.log("⏰ Cron Trigger Fired: Refreshing Sessions...");
+        // Log to confirm Daily execution
+        console.log("📅 Daily Trigger Executed (1 Hari Sekali)");
+
+        // Log Current Time in WIB
+        const wibTime = new Date().toLocaleString("id-ID", {
+            timeZone: "Asia/Jakarta",
+            hour12: false
+        }) + " WIB";
+
+        console.log(`[${wibTime}] ⏰ Cron Trigger Fired: Refreshing Sessions...`);
 
         const GH_REPO = "garword/kususcnva"; // Your Username/Repo
         const GH_TOKEN = env.GH_PAT; // Set this in Cloudflare Secrets!
