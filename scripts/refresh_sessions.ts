@@ -4,6 +4,7 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import * as puppeteerCore from 'puppeteer-core';
 import { sql } from '../lib/db';
 import * as dotenv from 'dotenv';
+import axios from 'axios';
 import fs from 'fs';
 import { TimeUtils } from '../src/lib/time';
 
@@ -107,10 +108,37 @@ async function refreshSessions() {
 
                 await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 45000 });
 
+                // Helper to send Telegram System Log
+                async function sendSystemLog(message: string) {
+                    const target = process.env.LOG_CHANNEL_ID || process.env.ADMIN_ID;
+                    const token = process.env.BOT_TOKEN;
+                    if (!token || !target) return;
+
+                    try {
+                        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+                            chat_id: target,
+                            text: message,
+                            parse_mode: 'HTML'
+                        });
+                    } catch (e: any) {
+                        console.error("Failed to send log:", e.message);
+                    }
+                }
+
+                // ... inside main loop ...
                 // D. Check Alive
                 if (page.url().includes('login') || page.url().includes('signup')) {
                     console.log(`   ❌ Session Invalid/Expired! Marking inactive.`);
                     await sql("UPDATE canva_accounts SET is_active = 0 WHERE id = ?", [account.id]);
+
+                    // Alert Admin
+                    await sendSystemLog(
+                        `⚠️ <b>Sesi Akun Berakhir!</b>\n` +
+                        `ID Node: <b>${account.id}</b>\n` +
+                        `Email: ${account.email || '-'}\n\n` +
+                        `Bot menonaktifkan akun ini otomatis.\n` +
+                        `Silakan update cookie via: <code>/addaccount</code>`
+                    );
                 } else {
                     // E. CAPTURE NEW COOKIES
                     const refreshedCookies = await page.cookies();
