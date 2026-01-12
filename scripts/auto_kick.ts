@@ -203,6 +203,7 @@ async function kickEnforcer() {
                     }
 
                     if (reason) {
+                        console.log(`   🔻 Selecting to KICK: ${email} | Reason: ${reason}`);
                         const checkbox = row.querySelector('input[type="checkbox"]');
                         if (checkbox && !(checkbox as any).checked) {
                             (checkbox as HTMLElement).click();
