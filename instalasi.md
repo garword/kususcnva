@@ -112,6 +112,25 @@ Sekarang bot sudah jalan, saatnya setting via Telegram.
     - Pastikan Bot sudah jadi **Admin** di channel target.
     - Ketik: `/set_channels @channel1, @channel2`.
 
+
+---
+
+## ⚡ Tahap 7: Setup Cloudflare Worker (Cron Job Trigger)
+Gratis & Lebih stabil daripada Vercel Cron. Ini bertugas memicu Auto-Kick & Invite setiap menit.
+
+1.  Login ke [dash.cloudflare.com](https://dash.cloudflare.com) -> **Workers & Pages**.
+2.  **Create Application** -> **Create Worker** -> Deploy (nama bebas, misal `cron-trigger`).
+3.  **Edit Code**:
+    *   Copy isi file `CLOUDFLARE_WORKER.js` dari repo ini.
+    *   Paste ke editor Cloudflare.
+    *   Sesuaikan variabel `targetUrl` (ke domain Vercel Anda) & `ghConfig` (Owner, Repo).
+4.  **Settings -> Variables**:
+    *   Tambahkan `GH_PAT` (Token GitHub Anda).
+5.  **Settings -> Triggers**:
+    *   Add Cron Trigger.
+    *   Pilih `1 minute` (Atau sesuai kebutuhan).
+6.  **Deploy**!
+
 ---
 
 ## ✅ Selesai! Cara Pakai:

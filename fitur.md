@@ -60,20 +60,24 @@ Dokumen ini merangkum seluruh fitur teknis, logika bisnis, dan mekanisme otomati
 *   **Set Cookie & UA**: Update cookie Canva dan User-Agent langsung dari bot tanpa restart server.
 *   **Broadcast**: Kirim pesan ke seluruh user bot.
 *   **Team ID & Slots**: Monitoring slot tim Canva.
+*   **Test Expire (`/tesexp`)**: Simulasi expired user dalam hitungan menit untuk testing auto-kick. Format: `/tesexp [email]|[menit]`.
 
 ---
 
-## 🤖 Sistem Otomatisasi & Backend (V2)
+## 🤖 Sistem Otomatisasi & Backend (V2.3 - WIB Sync)
 
-### 1. Database Resilience (Ketahanan)
-*   **Auto-Retry**: Bot otomatis mencoba ulang (retry) query database hingga 3x jika terjadi `ConnectTimeoutError` atau gangguan koneksi ke server Turso (Jepang).
-*   **Auto-Refund**: Jika perpanjangan gagal total setelah retry, poin user otomatis dikembalikan (Refund).
+### 1. Database Resilience & Timezone
+*   **WIB Synchronized**: Seluruh sistem (Bot, Database, Cron) berjalan seragam di Zona Waktu Indonesia Barat (UTC+7).
+*   **Auto-Retry**: Bot otomatis mencoba ulang (retry) query database hingga 3x jika terjadi gangguan koneksi.
+*   **Auto-Refund**: Jika perpanjangan gagal total, poin user otomatis dikembalikan.
 
 ### 2. Smart Automation (Puppeteer)
 *   **Login Hybrid**: Prioritas Login Email/Password -> Fallback ke Cookie Session.
-*   **Smart Invite**: Navigasi DOM cerdas menggunakan `aria-label` untuk mengundang user.
-*   **Auto-Kick**: Script otomatis menghapus member yang expired dari Tim Canva.
-*   **Stale Invite Cleaner**: Otomatis mencabut invite yang "Pending" > 1 jam untuk menghemat slot.
+*   **Smart Invite**: Navigasi DOM cerdas menggunakan `aria-label`.
+*   **Auto-Kick**: Script otomatis menghapus member expired (Triggered by Cloudflare Worker -> GitHub Actions).
+*   **Stale Invite Cleaner**: Otomatis mencabut invite "Pending" > 1 jam.
 
-### 3. Serverless Compatibility
-*   Bot didesain untuk berjalan di **Vercel (Serverless)** menggunakan Webhook, namun tetap compatible dengan mode **Local Polling** untuk development.
+### 3. Serverless Architecture
+*   **Vercel**: Hosting Webhook Bot (Responsif).
+*   **Cloudflare Worker**: Trigger Cron Job (Stabil & Presisi).
+*   **GitHub Actions**: Eksekutor script berat (Puppeteer/Browser automation).
