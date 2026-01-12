@@ -1774,6 +1774,7 @@ bot.command("listaccounts", async (ctx) => {
         if (res.rows.length === 0) return ctx.reply("❌ Belum ada akun terdaftar.");
 
         let msg = `🏭 <b>Daftar Node Canva (${res.rows.length})</b>\n\n`;
+        const keyboard = new InlineKeyboard();
 
         for (const acc of res.rows) {
             const status = acc.is_active ? "🟢 Aktif" : "🔴 Nonaktif";
@@ -1786,13 +1787,58 @@ bot.command("listaccounts", async (ctx) => {
             msg += `👥 Slot: <b>${usage}</b>\n`;
             if (team) msg += `🆔 ${team}\n`;
             msg += `🕒 Last Used: ${acc.last_used || 'Never'}\n\n`;
+
+            // Add Delete Button
+            keyboard.text(`🗑️ Hapus Node #${acc.id}`, `del_node_${acc.id}`).row();
         }
 
         msg += `Gunakan <code>/addaccount</code> untuk tambah.`;
-        await ctx.reply(msg, { parse_mode: "HTML" });
+        await ctx.reply(msg, { parse_mode: "HTML", reply_markup: keyboard });
 
     } catch (e: any) {
         await ctx.reply(`❌ Error: ${e.message}`);
+    }
+});
+
+// Action: Delete Node Button
+bot.callbackQuery(/del_node_(\d+)/, async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const nodeId = ctx.match[1];
+
+    try {
+        // Delete from DB
+        await sql("DELETE FROM canva_accounts WHERE id = ?", [nodeId]);
+        await ctx.answerCallbackQuery({ text: `✅ Node #${nodeId} berhasil dihapus!` });
+
+        // Refresh List
+        const res = await sql("SELECT * FROM canva_accounts ORDER BY id ASC");
+        if (res.rows.length === 0) {
+            return ctx.editMessageText("❌ Belum ada akun terdaftar.");
+        }
+
+        let msg = `🏭 <b>Daftar Node Canva (${res.rows.length})</b>\n\n`;
+        const keyboard = new InlineKeyboard();
+
+        for (const acc of res.rows) {
+            const status = acc.is_active ? "🟢 Aktif" : "🔴 Nonaktif";
+            const usage = `${acc.member_count}/${acc.max_slots}`;
+            const info = acc.email ? acc.email : "(Belum Terdeteksi)";
+            const team = acc.team_id ? `Team: ${acc.team_id}` : "";
+
+            msg += `<b>Node #${acc.id}</b> ${status}\n`;
+            msg += `📧 ${info}\n`;
+            msg += `👥 Slot: <b>${usage}</b>\n`;
+            if (team) msg += `🆔 ${team}\n`;
+            msg += `🕒 Last Used: ${acc.last_used || 'Never'}\n\n`;
+
+            keyboard.text(`🗑️ Hapus Node #${acc.id}`, `del_node_${acc.id}`).row();
+        }
+        msg += `Gunakan <code>/addaccount</code> untuk tambah.`;
+
+        await ctx.editMessageText(msg, { parse_mode: "HTML", reply_markup: keyboard });
+
+    } catch (e: any) {
+        await ctx.answerCallbackQuery({ text: `❌ Gagal: ${e.message}` });
     }
 });
 
