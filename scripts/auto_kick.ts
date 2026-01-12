@@ -112,7 +112,7 @@ async function kickEnforcer() {
         headless: process.env.CI ? "new" : false,
         defaultViewport: null,
         args: [
-            '--incognito',
+            // '--incognito', // Removed to match sync script behavior
             '--start-maximized',
             '--disable-blink-features=AutomationControlled',
             '--disable-notifications',
@@ -156,6 +156,9 @@ async function kickEnforcer() {
                 const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
                 const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value : null;
                 const peopleUrl = teamId ? `https://www.canva.com/brand/${teamId}/people` : `https://www.canva.com/settings/people`;
+
+                console.log(`   🆔 Team ID: ${teamId || 'NONE (Defaulting to Settings)'}`);
+                console.log(`   🔗 Navigating to: ${peopleUrl}`);
 
                 await page.goto(peopleUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                 await randomDelay(2000, 3000);
