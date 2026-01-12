@@ -213,30 +213,61 @@ async function kickEnforcer() {
             console.log(`   🎯 Selected ${scanResult.targets.length} users.`);
 
             if (scanResult.targets.length > 0) {
-                // Execute Removal Logic (Click Remove Button)
-                // (Simplified for brevity as exact selectors depend on UI)
-                // Assuming standardized selectors from previous research
+                // Execute Removal Logic
                 try {
+                    console.log(`   🏹 Preparing to kick ${scanResult.targets.length} users...`);
+
+                    // 1. Wait for Bulk Action Bar (Generic wait)
+                    await randomDelay(1000, 2000);
+
                     const buttons = await page.$$('button');
+                    let kickSuccess = false;
+                    let clickedButtonText = "";
+
+                    // Strategy: Find the "Remove from team" button first (High Confidence)
                     for (const btn of buttons) {
-                        const txt = await btn.evaluate((e: any) => e.innerText.toLowerCase());
-                        if (txt.includes('remove') || txt.includes('hapus')) {
+                        const txtRaw = await btn.evaluate((e: any) => e.innerText);
+                        const txt = txtRaw.toLowerCase();
+
+                        // Strict Match first: "Remove from team", "Hapus dari tim"
+                        if ((txt.includes('remove') || txt.includes('hapus')) && (txt.includes('team') || txt.includes('tim'))) {
+                            console.log(`   🖱️ Clicking Primary Button: "${txtRaw}"`);
                             await btn.click();
+                            clickedButtonText = txtRaw;
+
+                            // Wait for Modal
                             await randomDelay(1000, 2000);
-                            // Confirm
-                            const confirms = await page.$$('button');
-                            for (const cBtn of confirms) {
-                                const cTxt = await cBtn.evaluate((e: any) => e.innerText.toLowerCase());
-                                if (cTxt.includes('remove from team') || cTxt.includes('hapus dari tim')) {
-                                    await cBtn.click();
-                                    break;
-                                }
-                            }
-                            break;
+                            kickSuccess = await handleConfirmation(page);
+                            if (kickSuccess) break;
                         }
                     }
-                    console.log("   ⚔️ Executed Kick.");
-                    await sendTelegram(`⚔️ <b>Auto-Kick Executed</b>\nAccount: ${account.id}\nTargets: ${scanResult.targets.length}`);
+
+                    // Fallback: If no strict match, try generic "Remove" (Lower Confidence)
+                    if (!kickSuccess) {
+                        console.log("   ⚠️ Strict button not found. Trying generic 'Remove'...");
+                        for (const btn of buttons) {
+                            const txtRaw = await btn.evaluate((e: any) => e.innerText);
+                            const txt = txtRaw.toLowerCase();
+
+                            if (txt.trim() === 'remove' || txt.trim() === 'hapus') {
+                                console.log(`   🖱️ Clicking Fallback Button: "${txtRaw}"`);
+                                await btn.click();
+                                clickedButtonText = txtRaw;
+
+                                await randomDelay(1000, 2000);
+                                kickSuccess = await handleConfirmation(page);
+                                if (kickSuccess) break;
+                            }
+                        }
+                    }
+
+                    if (kickSuccess) {
+                        console.log("   ⚔️ Executed Kick (Confirmed).");
+                        await sendTelegram(`⚔️ <b>Auto-Kick Executed</b>\nAccount: ${account.id}\nTargets: ${scanResult.targets.length}`);
+                    } else {
+                        console.log("   ❌ Failed to find/click Confirmation Button.");
+                    }
+
                 } catch (e) {
                     console.error("Kick execution failed", e);
                 }
@@ -248,6 +279,23 @@ async function kickEnforcer() {
     } finally {
         setTimeout(() => browser.close(), 3000);
     }
+}
+
+// Helper: Handle Confirmation Modal
+async function handleConfirmation(page: any): Promise<boolean> {
+    const confirms = await page.$$('button');
+    for (const cBtn of confirms) {
+        const cTxtRaw = await cBtn.evaluate((e: any) => e.innerText);
+        const cTxt = cTxtRaw.toLowerCase();
+
+        // Modal Confirm Button usually repeats the action name
+        if (cTxt.includes('remove') || cTxt.includes('hapus')) {
+            console.log(`   🔨 Clicking Confirm: "${cTxtRaw}"`);
+            await cBtn.click();
+            return true;
+        }
+    }
+    return false;
 }
 
 kickEnforcer();
