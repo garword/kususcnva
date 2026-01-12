@@ -248,7 +248,14 @@ async function kickEnforcer() {
                 if (!email) return;
 
                 // SAFETY
-                if (text.includes('owner') || text.includes('pemilik') || text.includes('administrator') || safeSet.has(email)) return;
+                if (text.includes('owner') || text.includes('pemilik') || text.includes('administrator')) {
+                    console.log(`      🛡️ Skipped: Admin/Owner Role detected.`);
+                    return;
+                }
+                if (safeSet.has(email)) {
+                    console.log(`      🛡️ Skipped: In Safety List / Whitelist.`);
+                    return;
+                }
 
                 const isInvited = text.includes('invited') || text.includes('pending') || text.includes('diundang');
                 let reason = "";
