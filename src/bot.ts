@@ -1486,6 +1486,53 @@ bot.command("setua", async (ctx) => {
     }
 });
 
+// Command: Test Expire (Force Expire in X Minutes)
+bot.command("tesexp", async (ctx) => {
+    // Debug Log
+    console.log(`CMD: /tesexp from ${ctx.from?.id}`);
+
+    if (!isAdmin(ctx.from?.id || 0)) {
+        return ctx.reply("❌ <b>Akses Ditolak!</b>\nHanya admin yang bisa menggunakan command ini.", { parse_mode: "HTML" });
+    }
+
+    const args = (ctx.match as string).split("|");
+    if (args.length !== 2) {
+        return ctx.reply("⚠️ <b>Format Salah!</b>\n\nFormat: <code>/tesexp email@domain.com|menit</code>\nContoh: <code>/tesexp user@gmail.com|2</code>", { parse_mode: "HTML" });
+    }
+
+    const email = args[0].trim();
+    const minutes = parseInt(args[1].trim());
+
+    if (isNaN(minutes)) return ctx.reply("❌ Menit harus angka.");
+
+    try {
+        const userRes = await sql("SELECT id FROM users WHERE email = ?", [email]);
+        if (userRes.rows.length === 0) return ctx.reply("❌ User tidak ditemukan di database.");
+
+        const userId = userRes.rows[0].id;
+
+        // Update Subscriptions: Active but Expire in X minutes (WIB Adjusted)
+        await sql(`
+            UPDATE subscriptions 
+            SET status = 'active', 
+                end_date = datetime('now', '+7 hours', '+${minutes} minutes') 
+            WHERE user_id = ?
+        `, [userId]);
+
+        await ctx.reply(
+            `🧪 <b>Test Expire Set!</b>\n\n` +
+            `📧 User: <code>${email}</code>\n` +
+            `⏳ Expire In: ${minutes} menit\n\n` +
+            `User akan dianggap 'Active' sekarang, tapi akan 'Expired' dan kena kick otomatis setelah ${minutes} menit.`,
+            { parse_mode: "HTML" }
+        );
+
+    } catch (e) {
+        console.error(e);
+        await ctx.reply("❌ Database Error.");
+    }
+});
+
 bot.callbackQuery("adm_view_cookie", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     await showCookieInfo(ctx);
