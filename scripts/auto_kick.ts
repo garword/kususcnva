@@ -189,6 +189,7 @@ async function kickEnforcer() {
 
                     const email = match[0];
                     if (safeSet.has(email) || text.includes('owner') || text.includes('administrator')) return;
+                    if (whiteSet.has(email)) return; // ✅ SAFE: Active user (Priority over Blacklist)
 
                     const isInvited = text.includes('invited') || text.includes('pending') || text.includes('diundang');
                     let reason = "";
