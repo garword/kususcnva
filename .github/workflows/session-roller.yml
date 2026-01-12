@@ -1,0 +1,28 @@
+name: Auto-Save Cookies (Session Roller)
+
+on:
+  repository_dispatch:
+    types: [refresh-sessions]
+  workflow_dispatch: # Manual Button
+
+jobs:
+  roll-sessions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Session Roller Script
+        env:
+          TURSO_DB_URL: ${{ secrets.TURSO_DB_URL }}
+          TURSO_DB_TOKEN: ${{ secrets.TURSO_DB_TOKEN }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+        run: npx tsx scripts/refresh_sessions.ts

@@ -1196,24 +1196,33 @@ bot.hears("👤 Profil Saya", async (ctx) => {
 // 4. Panduan (Help)
 bot.hears("📖 Panduan", async (ctx) => {
     await ctx.reply(
-        `📚 <b>Panduan Penggunaan Bot</b>\n\n` +
-        `<b>1️⃣ Cara Mendapatkan Akun:</b>\n` +
-        `• Klik tombol <b>🎁 Menu Paket</b> di menu utama.\n` +
-        `• Pilih durasi (1 Bulan Free / 6 Bulan Premium).\n` +
-        `• Setelah pilih, ketik: <code>/aktivasi emailmu@gmail.com</code>\n` +
-        `• Tunggu bot memproses invite (1-5 menit).\n\n` +
+        `📖 <b>PANDUAN LENGKAP BOT V2</b>\n\n` +
+        `👤 <b>Perintah User:</b>\n` +
+        `• <b>/start</b> - Mulai ulang bot & cek menu.\n` +
+        `• <b>/aktivasi [email]</b> - Aktivasi Canva Pro (setelah pilih paket).\n` +
+        `  Contoh: <code>/aktivasi user@gmail.com</code>\n` +
+        `• <b>🎁 Menu Paket</b> - Pilih durasi (1 Bulan / 6 Bulan).\n` +
+        `• <b>👤 Profil Saya</b> - Cek status langganan & poin.\n` +
+        `• <b>📊 Cek Slot</b> - Cek ketersediaan slot global.\n\n` +
 
-        `<b>2️⃣ Cara Perpanjang (Extension):</b>\n` +
-        `• Pastikan punya <b>Poin Referral</b> cukup.\n` +
-        `• Ulangi langkah (Pilih Paket -> Aktivasi).\n` +
-        `• Bot otomatis mendeteksi akun lama & menambah durasi.\n\n` +
+        `ℹ️ <b>Tips:</b>\n` +
+        `1. Join channel wajib agar bot bisa digunakan.\n` +
+        `2. Undang teman untuk dapat poin (1 teman = 1 poin).\n` +
+        `3. Paket 6 Bulan butuh 6 Poin.\n\n` +
 
-        `<b>3️⃣ Menu Admin (Khusus Owner):</b>\n` +
-        `• Ketik <code>/admin</code> atau klik tombol di panel bawah.\n` +
-        `• Gunakan fitur <b>Set Log Topik</b> untuk notifikasi info slot otomatis.\n` +
-        `• Gunakan fitur <b>Auto-Kick</b> untuk membersihkan member expired.\n\n` +
-
-        `<i>💡 Tips: Admin tidak memungut biaya uang. Semua gratis via Poin!</i>`,
+        `👮 <b>Perintah Admin (Owner):</b>\n` +
+        `• <b>/admin</b> - Buka panel admin super.\n` +
+        `• <b>/addaccount [json]</b> - Tambah akun Canva baru (Multi-Account).\n` +
+        `• <b>/listaccounts</b> - Cek daftar akun & slot per node.\n` +
+        `• <b>/addpoint [ID|Poin]</b> - Tambah poin manual.\n` +
+        `• <b>/data</b> - Export laporan user (.txt).\n` +
+        `• <b>/broadcast [pesan]</b> - Kirim pesan ke semua user.\n` +
+        `• <b>/setua [ua]</b> - Set User-Agent browser.\n` +
+        `• <b>/tesexp [email|mnt]</b> - Set user expired (Testing).\n` +
+        `• <b>/reset_email [email]</b> - Soft delete (Lepas langganan).\n` +
+        `• <b>/delete_user [email]</b> - Hard delete user.\n` +
+        `• <b>/set_channels</b> - Atur channel force subscribe.\n` +
+        `• <b>/channels</b> - Cek list channel aktif.`,
         { parse_mode: "HTML" }
     );
 });
