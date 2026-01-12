@@ -32,7 +32,7 @@ const isAdmin = (id: number) => id === ADMIN_ID;
 const mainMenu = new Keyboard()
     .text("🎁 Menu Paket").text("👤 Profil Saya").row()
     .text("📖 Panduan").text("👨‍💻 Admin Panel").row()
-    .text("📊 Cek Slot")
+    .text("📊 Cek Slot").text("💸 Donasi") // Added Donasi Button
     .resized();
 
 // ============================================================
@@ -167,6 +167,58 @@ bot.hears("📖 Panduan", async (ctx) => {
     }
 
     await ctx.reply(msg, { parse_mode: "HTML" });
+});
+
+// Handler: Donasi Button
+bot.hears("💸 Donasi", async (ctx) => {
+    try {
+        const res = await sql("SELECT value FROM settings WHERE key = 'custom_donation_msg'");
+        const donasiMsg = res.rows.length > 0 ? res.rows[0].value : null;
+
+        if (donasiMsg) {
+            await ctx.reply(donasiMsg as string, { parse_mode: "HTML", disable_web_page_preview: true });
+        } else {
+            // Default Message if not set
+            await ctx.reply(
+                "💸 <b>Menu Donasi</b>\n\n" +
+                "Saat ini pesan donasi belum diatur oleh Admin.\n" +
+                "Silakan hubungi admin untuk info lebih lanjut.",
+                { parse_mode: "HTML" }
+            );
+        }
+    } catch (e) {
+        console.error("Error donation:", e);
+    }
+});
+
+// Admin Command: Set Donasi (Reply Mode)
+bot.command("setdonasi", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const reply = ctx.message?.reply_to_message;
+    // Check if replying to text
+    if (!reply || !reply.text) {
+        return ctx.reply(
+            "⚠️ <b>Cara Pakai Salah!</b>\n\n" +
+            "1. Tulis pesan donasi (bisa teks/HTML).\n" +
+            "2. Reply pesan tersebut dengan <code>/setdonasi</code>\n\n" +
+            "<i>Fitur ini mengambil teks dari pesan yang Anda reply.</i>",
+            { parse_mode: "HTML" }
+        );
+    }
+
+    const content = reply.text; // Get content from replied message
+
+    // Save to DB
+    try {
+        await sql(
+            "INSERT INTO settings (key, value) VALUES ('custom_donation_msg', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [content, content]
+        );
+        await ctx.reply("✅ <b>Pesan Donasi Berhasil Disimpan!</b>\nSilakan cek tombol Donasi sekarang.", { parse_mode: "HTML" });
+    } catch (e: any) {
+        await ctx.reply(`❌ Error DB: ${e.message}`);
+    }
 });
 
 // Admin// Command: Set Cookie (Legacy - Deprecated)
