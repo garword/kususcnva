@@ -63,6 +63,13 @@ async function fixConsistency() {
         `);
         console.log("   ✅ Settings defaults ensured.");
 
+        // 4. Ensure Schema Columns Exist (Migration)
+        console.log("   🔍 Checking for missing schema columns...");
+        try { await sql("ALTER TABLE users ADD COLUMN last_message_id TEXT"); console.log("      + Added last_message_id"); } catch (e) { }
+        try { await sql("ALTER TABLE users ADD COLUMN referral_points INTEGER DEFAULT 0"); console.log("      + Added referral_points"); } catch (e) { }
+        try { await sql("ALTER TABLE users ADD COLUMN selected_product_id INTEGER DEFAULT 1"); console.log("      + Added selected_product_id"); } catch (e) { }
+        console.log("   ✅ Schema columns ensured.");
+
         console.log("🎉 Database Consistency Check Complete!");
 
     } catch (e: any) {
