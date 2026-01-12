@@ -283,18 +283,41 @@ async function kickEnforcer() {
 
 // Helper: Handle Confirmation Modal
 async function handleConfirmation(page: any): Promise<boolean> {
+    console.log("   👀 Waking up for Confirmation Modal...");
+    await new Promise(r => setTimeout(r, 2000)); // Explicit Wait
+
+    // 1. Try Standard Buttons
     const confirms = await page.$$('button');
+    const debugTexts: string[] = [];
+
     for (const cBtn of confirms) {
         const cTxtRaw = await cBtn.evaluate((e: any) => e.innerText);
+        debugTexts.push(cTxtRaw.trim());
         const cTxt = cTxtRaw.toLowerCase();
 
         // Modal Confirm Button usually repeats the action name
-        if (cTxt.includes('remove') || cTxt.includes('hapus')) {
-            console.log(`   🔨 Clicking Confirm: "${cTxtRaw}"`);
+        if (cTxt.includes('remove') || cTxt.includes('hapus') || cTxt.includes('delete') || cTxt.includes('confirm')) {
+            console.log(`   🔨 Clicking Confirm (Button): "${cTxtRaw}"`);
             await cBtn.click();
             return true;
         }
     }
+
+    // 2. Try Div Buttons (Common in Modern Frameworks)
+    const divBtns = await page.$$('div[role="button"]');
+    for (const dBtn of divBtns) {
+        const dTxtRaw = await dBtn.evaluate((e: any) => e.innerText);
+        debugTexts.push(`[DIV] ${dTxtRaw.trim()}`);
+        const dTxt = dTxtRaw.toLowerCase();
+
+        if (dTxt.includes('remove') || dTxt.includes('hapus')) {
+            console.log(`   🔨 Clicking Confirm (Div): "${dTxtRaw}"`);
+            await dBtn.click();
+            return true;
+        }
+    }
+
+    console.log(`   ❌ Confirmation Button NOT Found! Saw: ${JSON.stringify(debugTexts)}`);
     return false;
 }
 
