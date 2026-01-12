@@ -2057,18 +2057,41 @@ bot.callbackQuery(/buy_(.+)/, async (ctx) => {
             return ctx.answerCallbackQuery("Paket tidak valid.");
         }
 
-        // Simpan Pilihan (Tanpa Potong Poin Dulu - Pay as you go)
+        // 1. Simpan Pilihan
         await sql("UPDATE users SET selected_product_id = ? WHERE id = ?", [productId, userId]);
 
-        await ctx.deleteMessage();
-        await ctx.reply(
-            `✅ <b>Paket Dipilih!</b>\n` +
+        // 2. Cek Email Tersimpan
+        const userRes = await sql("SELECT email FROM users WHERE id = ?", [userId]);
+        const savedEmail = userRes.rows.length > 0 ? userRes.rows[0].email : null;
+
+        const keyboard = new InlineKeyboard();
+        let msg = `✅ <b>Paket Dipilih!</b>\n` +
             `📦 Opsi: <b>${productName}</b>\n` +
-            `💎 Biaya: <b>${costCost} Poin</b> (Akan dipotong saat aktivasi)\n\n` +
-            `Silakan ketik: <code>/aktivasi emailmu@gmail.com</code>\n` +
-            `Bot akan otomatis cek poin Anda saat aktivasi.`,
-            { parse_mode: "HTML" }
-        );
+            `💎 Biaya: <b>${costCost} Poin</b>\n\n`;
+
+        // 3. Logika Tombol
+        if (savedEmail) {
+            if (productId === 1) {
+                // CASE: FREE PLAN (Wajib Email Lama)
+                msg += `⚠️ Paket Free hanya boleh menggunakan email yang sudah terdaftar.\n` +
+                    `📧 Email Anda: <b>${savedEmail}</b>`;
+
+                keyboard.text(`📧 Gunakan: ${savedEmail}`, "use_saved_email");
+            } else {
+                // CASE: PAID PLAN (Boleh Ganti)
+                msg += `📧 Email Terdaftar: <b>${savedEmail}</b>\n` +
+                    `Anda bisa menggunakan email ini atau ganti baru (Data akan diupdate).`;
+
+                keyboard.text(`📧 Gunakan Email Ini`, "use_saved_email").row();
+                keyboard.text(`✏️ Gunakan Email Lain`, "ask_new_email");
+            }
+        } else {
+            // Belum punya email -> Minta Input
+            msg += `Silakan kirimkan alamat email Canva Anda sekarang (Ketik langsung).`;
+        }
+
+        await ctx.deleteMessage();
+        await ctx.reply(msg, { parse_mode: "HTML", reply_markup: keyboard });
 
     } catch (e: any) {
         console.error("Error buy callback:", e);
@@ -2076,6 +2099,91 @@ bot.callbackQuery(/buy_(.+)/, async (ctx) => {
     }
 
     try { await ctx.answerCallbackQuery(); } catch { }
+});
+
+// Callback: Use Saved Email
+bot.callbackQuery("use_saved_email", async (ctx) => {
+    const userId = ctx.from.id;
+    try {
+        const userRes = await sql("SELECT email FROM users WHERE id = ?", [userId]);
+        if (userRes.rows.length > 0 && userRes.rows[0].email) {
+            await handleActivation(ctx, userRes.rows[0].email as string);
+        } else {
+            await ctx.reply("❌ Email tidak ditemukan. Silakan input manual.");
+        }
+        await ctx.answerCallbackQuery();
+    } catch (e) {
+        console.error(e);
+    }
+});
+
+// Callback: Ask New Email
+bot.callbackQuery("ask_new_email", async (ctx) => {
+    await ctx.reply(
+        `✏️ <b>Input Email Baru</b>\n\n` +
+        `Silakan ketik dan kirim alamat email baru Anda sekarang.\n` +
+        `Contoh: <code>baru@gmail.com</code>\n\n` +
+        `<i>(Data email Anda akan diperbarui otomatis untuk pembelian ini)</i>`,
+        { parse_mode: "HTML" }
+    );
+    await ctx.answerCallbackQuery();
+});
+
+// Handler: Capture Email Input (Text Message)
+bot.on("message:text", async (ctx) => {
+    const text = ctx.message.text.trim();
+    const userId = ctx.from.id;
+
+    // 1. Basic Email Regex Check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(text)) {
+        // If not email, ignore (let other handlers process checks, but wait, bot.on is greedy?)
+        // Bot.on("message:text") catches EVERYTHING that hasn't been handled by specific commands yet if placed after them.
+        // Grammy middleware chain implies: if previous handlers (commands/hears) didn't match, this WILL catch it.
+        return;
+        // NOTE: If we simply return, it might just stop. 
+        // We only want to act if it LOOKS like an email AND user is in "Order Mode" (has selected_product_id).
+    }
+
+    // 2. Check if User is in "Order Mode" (Has selected_product_id)
+    try {
+        const userRes = await sql("SELECT selected_product_id, email FROM users WHERE id = ?", [userId]);
+        if (userRes.rows.length === 0) return;
+
+        const user = userRes.rows[0];
+        const prodId = user.selected_product_id;
+        const savedEmail = user.email;
+
+        // If no product selected, ignore (User just typing random email?)
+        if (!prodId) return;
+
+        // 3. Process Logic based on Plan
+        if (prodId === 1) {
+            // FREE PLAN: Strict Check
+            if (savedEmail && savedEmail !== text) {
+                return ctx.reply(
+                    `⛔ <b>Paket Free Terbatas!</b>\n\n` +
+                    `Anda sudah terdaftar dengan email: <b>${savedEmail}</b>\n` +
+                    `Paket Free tidak mengizinkan ganti email.\n` +
+                    `Silakan pilih Paket Premium jika ingin ganti akun.`,
+                    { parse_mode: "HTML" }
+                );
+            }
+        }
+
+        // PAID PLAN (or Initial Free): Update Email
+        // Always update email to latest input for Paid plans OR if it's the first time (savedEmail is null)
+        if (prodId !== 1 || !savedEmail) {
+            await sql("UPDATE users SET email = ? WHERE id = ?", [text, userId]);
+        }
+
+        // 4. Trigger Activation
+        await ctx.reply(`🔄 Memproses email: <b>${text}</b>...`, { parse_mode: "HTML" });
+        await handleActivation(ctx, text);
+
+    } catch (e: any) {
+        console.error("Error email handler:", e);
+    }
 });
 
 // ============================================================
