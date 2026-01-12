@@ -1568,7 +1568,13 @@ bot.hears("📊 Cek Slot", async (ctx) => {
 // Command: Add Account via Cookie (Cookie-Only)
 // Command: Add Account via Cookie (Cookie-Only)
 bot.command("addaccount", async (ctx) => {
-    if (!isAdmin(ctx.from?.id || 0)) return;
+    console.log(`[DEBUG] /addaccount triggered by ${ctx.from?.id}`);
+
+    // Explicit Auth Error for Debugging
+    if (!isAdmin(ctx.from?.id || 0)) {
+        console.log(`[DEBUG] Access Denied. AdminID=${process.env.ADMIN_ID}, UserID=${ctx.from?.id}`);
+        return ctx.reply(`❌ <b>Akses Ditolak!</b>\nID Anda (${ctx.from?.id}) tidak cocok dengan ADMIN_ID server.`, { parse_mode: "HTML" });
+    }
 
     let input = (ctx.match as string || "").trim();
     const doc = ctx.msg.document || ctx.msg.reply_to_message?.document;
