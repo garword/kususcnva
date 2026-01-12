@@ -87,6 +87,23 @@ export async function removeUser(email: string): Promise<CanvaResult> {
     return { success: true, message: "Simulasi: User berhasil dihapus." };
 }
 
+// Helper untuk cek slot global (Multi-Account)
 export async function checkSlots(): Promise<string> {
-    return "Cek slot via Worker Logs.";
+    try {
+        const res = await sql("SELECT SUM(member_count) as total_used, SUM(max_slots) as total_cap, COUNT(*) as nodes FROM canva_accounts WHERE is_active = 1");
+        const row = res.rows[0];
+
+        const used = parseInt(row.total_used as any) || 0;
+        const cap = parseInt(row.total_cap as any) || 0;
+        const nodes = parseInt(row.nodes as any) || 0;
+
+        if (nodes === 0) return "⚠️ Tidak ada akun aktif.";
+
+        const available = cap - used;
+        const status = available > 0 ? "✅ Tersedia" : "⛔ Penuh";
+
+        return `${status} (${used}/${cap} dari ${nodes} Server)`;
+    } catch (e: any) {
+        return `❌ Error: ${e.message}`;
+    }
 }

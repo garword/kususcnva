@@ -197,20 +197,12 @@ bot.command("set_cookie", async (ctx) => {
         return;
     }
 
-    // 2. Cek jika input text langsung
-    const text = ctx.match as string;
-    if (text) {
-        try {
-            JSON.parse(text); // Validate
-            await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_cookie', ?)", [text]);
-            await ctx.reply("✅ <b>Cookie Berhasil Disimpan!</b>", { parse_mode: "HTML" });
-        } catch (e) {
-            await ctx.reply("❌ Format JSON tidak valid. Gunakan file jika terlalu panjang.");
-        }
-        return;
-    }
-
-    await ctx.reply("ℹ️ <b>Cara Set Cookie:</b>\n1. Kirim file <code>cookies.json</code> dengan caption <code>/set_cookie</code>\n2. Atau ketik <code>/set_cookie [JSON_STRING]</code>", { parse_mode: "HTML" });
+    await ctx.reply(
+        "⚠️ <b>Command Berubah!</b>\n\n" +
+        "Sistem sekarang mendukung <b>Multi-Akun</b>.\n" +
+        "Gunakan command: <code>/addaccount [cookie]</code> untuk menambah akun.",
+        { parse_mode: "HTML" }
+    );
 });
 
 // Alias /help to Panduan
@@ -1453,8 +1445,8 @@ bot.callbackQuery("adm_help_log", async (ctx) => {
 bot.callbackQuery("adm_team_id", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-    const val = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Belum diset";
-    await ctx.reply(`🆔 <b>Team ID Saat Ini:</b>\n<code>${val}</code>\n\nCara ubah: <code>/set_team_id [ID_BARU]</code>`, { parse_mode: "HTML" });
+    const val = teamRes.rows.length > 0 ? teamRes.rows[0].value : "Multi-Node Mode";
+    await ctx.reply(`🆔 <b>Main Team ID:</b>\n<code>${val}</code>\n\nUntuk menambah node dengan Team ID berbeda, gunakan <code>/addaccount</code>.`, { parse_mode: "HTML" });
     await ctx.answerCallbackQuery();
 });
 
@@ -1470,10 +1462,11 @@ bot.callbackQuery("adm_cookie", async (ctx) => {
 
     await ctx.reply(
         `🍪 <b>Status Cookie:</b> ${val}\n\n` +
-        `Menu Manajemen Cookie:\n` +
-        `1. <b>Set Cookie:</b> Kirim file .json dengan caption <code>/set_cookie</code>\n` +
-        `2. <b>Set User-Agent:</b> Reply pesan teks dengan command <code>/setua</code>\n` +
-        `3. <b>Cek Isi:</b> Tekan tombol di bawah atau ketik <code>/cekcookie</code>`,
+        `Menu Manajemen Akun:\n` +
+        `1. <b>Tambah Akun:</b> Kirim file .json dengan caption <code>/addaccount</code>\n` +
+        `2. <b>List Akun:</b> Ketik <code>/listaccounts</code>\n` +
+        `3. <b>Set User-Agent:</b> Reply pesan teks dengan command <code>/setua</code>\n` +
+        `4. <b>Cek Isi:</b> Tekan tombol di bawah untuk liat detail.`,
         { parse_mode: "HTML", reply_markup: cookieKeyboard }
     );
     await ctx.answerCallbackQuery();
@@ -1573,31 +1566,27 @@ bot.command("cekcookie", async (ctx) => {
 
 async function showCookieInfo(ctx: any) {
     try {
-        const res = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
+        const res = await sql("SELECT * FROM canva_accounts ORDER BY id ASC");
         if (res.rows.length === 0) {
-            return ctx.reply("❌ <b>Cookie Kosong!</b>\nDatabase belum menyimpan cookie apapun.", { parse_mode: "HTML" });
+            return ctx.reply("❌ <b>Tidak ada Akun!</b>\nBelum ada akun Canva yang ditambahkan. Gunakan <code>/addaccount</code>.", { parse_mode: "HTML" });
         }
 
-        const cookieRaw = res.rows[0].value as string;
-        let preview = "";
+        let msg = `🍪 <b>Status Akun Canva (Multi-Node)</b>\n\n`;
 
-        // Coba parsing sedikit untuk info
-        try {
-            // Jika JSON
-            const json = JSON.parse(cookieRaw);
-            preview = `<b>Format:</b> JSON Array\n<b>Jumlah:</b> ${json.length} items\n\n`;
-            preview += `<b>Preview Raw:</b>\n<pre>${cookieRaw.substring(0, 100)}...</pre>`;
-        } catch {
-            // Jika String
-            preview = `<b>Format:</b> Raw String\n\n`;
-            preview += `<b>Preview Raw:</b>\n<pre>${cookieRaw.substring(0, 100)}...</pre>`;
+        for (const acc of res.rows) {
+            const status = acc.is_active ? "🟢 Aktif" : "🔴 Mati";
+            const email = acc.email || "Unknown";
+            const count = acc.member_count || 0;
+            const cookieprev = (acc.cookie as string).substring(0, 15) + "...";
+
+            msg += `<b>Node #${acc.id}</b> ${status}\n`;
+            msg += `📧 ${email}\n`;
+            msg += `👥 ${count} Member\n`;
+            msg += `🔑 ${cookieprev}\n\n`;
         }
 
-        await ctx.reply(
-            `🍪 <b>Detail Cookie Database:</b>\n\n${preview}\n\n` +
-            `<i>(Cookie terlalu panjang untuk ditampilkan semua. Gunakan Export Data jika butuh full backup)</i>`,
-            { parse_mode: "HTML" }
-        );
+        await ctx.reply(msg, { parse_mode: "HTML" });
+
     } catch (e: any) {
         await ctx.reply(`❌ Error: ${e.message}`);
     }
@@ -1623,29 +1612,140 @@ async function getNextSlotInfo(): Promise<string> {
 }
 
 bot.hears("📊 Cek Slot", async (ctx) => {
-    // 1. Ambil Data Slot dari Settings
-    const countRes = await sql("SELECT value FROM settings WHERE key = 'team_member_count'");
-    const currentCount = countRes.rows.length > 0 ? parseInt(countRes.rows[0].value as string) : 0;
-    const maxSlot = 500;
+    // 1. Ambil Data Slot Global (Multi-Account Aggregation)
+    const slotRes = await sql("SELECT SUM(member_count) as total_used, SUM(max_slots) as total_cap, COUNT(*) as nodes FROM canva_accounts WHERE is_active = 1");
+    const row = slotRes.rows[0];
+
+    const currentCount = parseInt(row.total_used as any) || 0;
+    const maxSlot = parseInt(row.total_cap as any) || 0; // Default 0 if no accounts
+    const nodeCount = parseInt(row.nodes as any) || 0;
+
     const available = maxSlot - currentCount;
     const isFull = currentCount >= maxSlot;
 
     // 2. Format Pesan
-    let msg = `📊 <b>Status Slot Tim Canva</b>\n\n`;
-    msg += `👥 <b>Terisi:</b> ${currentCount} / ${maxSlot}\n`;
-    msg += `🔓 <b>Tersedia:</b> ${available > 0 ? available : 0}\n\n`;
+    let msg = `📊 <b>Status Server Canva (Cluster)</b>\n\n`;
+    msg += `👥 <b>Total Member:</b> ${currentCount} / ${maxSlot}\n`;
+    msg += `🟢 <b>Slot Tersedia:</b> ${available > 0 ? available : 0}\n`;
+    msg += `🏭 <b>Node Aktif:</b> ${nodeCount} Server\n\n`;
 
     if (isFull) {
-        const nextSlot = await getNextSlotInfo();
-        msg += `⛔ <b>STATUS: PENUH</b>\n`;
-        msg += `⏳ <b>Slot Berikutnya:</b> ${nextSlot}\n\n`;
-        msg += `<i>Silakan cek lagi nanti.</i>`;
+        msg += `⛔ <b>STATUS: PENUH (ALL NODES)</b>\n`;
+        // msg += `⏳ <b>Slot Berikutnya:</b> ${nextSlot}\n\n`; // TODO: Check next slot globally
+        msg += `<i>Silakan cek lagi nanti. Admin sedang menambah server baru.</i>`;
     } else {
-        msg += `✅ <b>STATUS: TERSEDIA</b>\n`;
+        msg += `✅ <b>STATUS: AMAN</b>\n`;
         msg += `<i>Segera lakukan aktivasi sebelum penuh!</i>`;
     }
 
     await ctx.reply(msg, { parse_mode: "HTML" });
+});
+
+// ============================================================
+// ADMIN: MULTI-ACCOUNT MANAGEMENT
+// ============================================================
+
+// Command: Add Account via Cookie (Cookie-Only)
+// Command: Add Account via Cookie (Cookie-Only)
+bot.command("addaccount", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    let cookieStr = ctx.match as string;
+    const doc = ctx.msg.document || ctx.msg.reply_to_message?.document;
+
+    // 1. Handle File Upload (Direct Caption or Reply)
+    if (!cookieStr && doc) {
+        try {
+            const loading = await ctx.reply("⏳ <b>Mengunduh file...</b>", { parse_mode: "HTML" });
+
+            // Basic Validation
+            if (doc.file_size && doc.file_size > 100 * 1024) { // Limit 100KB
+                return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ File terlalu besar (Max 100KB).");
+            }
+
+            // Get File Path
+            const file = await ctx.api.getFile(doc.file_id);
+            const filePath = file.file_path;
+
+            if (!filePath) {
+                return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ Gagal mendapatkan path file.");
+            }
+
+            // Construct Download URL
+            // Note: GramMY file path requires the token
+            const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
+
+            // Download Content
+            const response = await axios.get(downloadUrl, { responseType: 'text' });
+            let content = response.data;
+
+            // Ensure String format for DB
+            if (typeof content === 'object') {
+                content = JSON.stringify(content);
+            }
+
+            cookieStr = content;
+            await ctx.api.deleteMessage(ctx.chat.id, loading.message_id);
+
+        } catch (e: any) {
+            return ctx.reply(`❌ Gagal membaca file: ${e.message}`);
+        }
+    }
+    // 2. Handle Reply to Text (Legacy)
+    else if (!cookieStr && ctx.msg.reply_to_message) {
+        if ("text" in ctx.msg.reply_to_message) {
+            cookieStr = ctx.msg.reply_to_message.text || "";
+        }
+    }
+
+    if (!cookieStr) {
+        return ctx.reply(
+            `➕ <b>Tambah Akun Canva (Node)</b>\n\n` +
+            `Format User Biasa:\n` +
+            `1. Upload File: Kirim <b>JSON</b> dengan caption <code>/addaccount</code>\n` +
+            `2. Text: Ketik <code>/addaccount [COOKIE]</code>\n\n` +
+            `Bot akan otomatis mendeteksi Email & Team ID setelah akun dipakai.`,
+            { parse_mode: "HTML" }
+        );
+    }
+
+    try {
+        await sql("INSERT INTO canva_accounts (cookie, created_at) VALUES (?, datetime('now', '+7 hours'))", [cookieStr]);
+        await ctx.reply(`✅ <b>Akun Berhasil Ditambahkan!</b>\n\nBot akan melakukan <b>Auto-Discovery</b> (Cek Email & ID) saat antrian berikutnya berjalan.`);
+    } catch (e: any) {
+        await ctx.reply(`❌ Gagal tambah akun: ${e.message}`);
+    }
+});
+
+// Command: List Accounts
+bot.command("listaccounts", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    try {
+        const res = await sql("SELECT * FROM canva_accounts ORDER BY id ASC");
+        if (res.rows.length === 0) return ctx.reply("❌ Belum ada akun terdaftar.");
+
+        let msg = `🏭 <b>Daftar Node Canva (${res.rows.length})</b>\n\n`;
+
+        for (const acc of res.rows) {
+            const status = acc.is_active ? "🟢 Aktif" : "🔴 Nonaktif";
+            const usage = `${acc.member_count}/${acc.max_slots}`;
+            const info = acc.email ? acc.email : "(Belum Terdeteksi)";
+            const team = acc.team_id ? `Team: ${acc.team_id}` : "";
+
+            msg += `<b>Node #${acc.id}</b> ${status}\n`;
+            msg += `📧 ${info}\n`;
+            msg += `👥 Slot: <b>${usage}</b>\n`;
+            if (team) msg += `🆔 ${team}\n`;
+            msg += `🕒 Last Used: ${acc.last_used || 'Never'}\n\n`;
+        }
+
+        msg += `Gunakan <code>/addaccount</code> untuk tambah.`;
+        await ctx.reply(msg, { parse_mode: "HTML" });
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
 });
 
 // 2. Help Guides

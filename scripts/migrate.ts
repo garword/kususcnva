@@ -1,32 +1,31 @@
-import { db } from "../lib/db";
-import fs from "fs";
-import path from "path";
+import { sql } from '../lib/db';
+import fs from 'fs';
+import path from 'path';
 
-// Fungsi utama untuk menjalankan migrasi
 async function runMigration() {
     try {
-        console.log("Mulai migrasi database...");
+        console.log("🚀 Starting Migration: add_canva_accounts...");
 
-        // Membaca file schema.sql
-        const schemaPath = path.join(__dirname, "../migrations/schema.sql");
-        const schemaSql = fs.readFileSync(schemaPath, "utf-8");
+        const migrationPath = path.join(__dirname, '../migrations/add_canva_accounts.sql');
+        const query = fs.readFileSync(migrationPath, 'utf-8');
 
-        // Memisahkan perintah berdasarkan titik koma (;) untuk eksekusi per statement
-        // Ini pendekatan sederhana, untuk produksi yang kompleks disarankan menggunakan library migrasi
-        const statements = schemaSql
-            .split(";")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
+        // Split by semicolon to run statements sequentially (simple split)
+        // Note: This is a basic split, complex queries might need better parsing but sufficient for this.
+        const statements = query.split(';').map(s => s.trim()).filter(s => s.length > 0);
 
         for (const statement of statements) {
-            await db.execute(statement);
-            console.log(`Berhasil mengeksekusi: ${statement.substring(0, 50)}...`);
+            console.log(`Executing: ${statement.substring(0, 50)}...`);
+            await sql(statement);
         }
 
-        console.log("Migrasi selesai! Database siap digunakan.");
-    } catch (error) {
-        console.error("Gagal melakukan migrasi:", error);
-        process.exit(1);
+        console.log("✅ Migration Success!");
+
+        // Verify
+        const check = await sql("SELECT * FROM canva_accounts");
+        console.log("📊 Current Accounts:", check.rows);
+
+    } catch (e: any) {
+        console.error("❌ Migration Failed:", e.message);
     }
 }
 

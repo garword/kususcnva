@@ -165,386 +165,127 @@ async function runPuppeteerQueue() {
         const chromePath = getChromePath();
         if (!chromePath) throw new Error("Chrome tidak ditemukan!");
 
-        // Fetch settings
-        const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
-        const cookie = cookieRes.rows.length > 0 ? cookieRes.rows[0].value : "";
+        // ============================================================================
+        // MULTI-ACCOUNT SELECTOR (ROUND ROBIN / FILL FIRST)
+        // ============================================================================
+        console.log("🔄 Selecting Active Account...");
 
-        const teamRes = await sql("SELECT value FROM settings WHERE key = 'canva_team_id'");
-        const teamId = teamRes.rows.length > 0 ? teamRes.rows[0].value as string : undefined;
+        // 1. Get All Active Accounts (Sorted by ID to Prioritize Main Account)
+        const accountsRes = await sql("SELECT * FROM canva_accounts WHERE is_active = 1 ORDER BY id ASC");
+        const accounts = accountsRes.rows;
 
-        // 0. RESTORE SESSION FROM ENV (FOR GITHUB ACTIONS)
-        if (process.env.CANVA_COOKIES) {
-            console.log("📂 Restoring Cookies from Env Var...");
-            fs.writeFileSync('auth_cookies.json', process.env.CANVA_COOKIES);
-        }
-        if (process.env.CANVA_USER_AGENT) {
-            console.log("📂 Restoring User-Agent from Env Var...");
-            fs.writeFileSync('auth_user_agent.txt', process.env.CANVA_USER_AGENT);
+        if (accounts.length === 0) {
+            throw new Error("❌ No active Canva accounts found in DB! Use /addaccount to setup.");
         }
 
-        // 🎭 USER-AGENT POOL (Realistic & Updated 2026)
-        const userAgentPool = [
-            // Windows Chrome (Most common)
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        // 2. Select First Available Account (Smart Refill)
+        let selectedAccount: any = null;
+        for (const acc of accounts) {
+            const currentMembers = parseInt(acc.member_count as any) || 0;
+            const maxSlots = parseInt(acc.max_slots as any) || 500;
 
-            // Windows Edge
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
-
-            // macOS Safari
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-
-            // Windows Firefox
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
-        ];
-
-        // Random selection
-        // Random selection default
-        let userAgent = userAgentPool[Math.floor(Math.random() * userAgentPool.length)];
-
-        // OVERRIDE: Use Saved User-Agent if available (Sync with Cookies)
-        const uaFile = 'auth_user_agent.txt';
-        if (fs.existsSync(uaFile)) {
-            try {
-                const savedUA = fs.readFileSync(uaFile, 'utf-8').trim();
-                if (savedUA.length > 0) {
-                    userAgent = savedUA;
-                    console.log(`🎭 Using SAVED User-Agent (Matched with Cookie): ${userAgent.substring(0, 60)}...`);
-                }
-            } catch (e) {
-                console.error("   ⚠️ Failed to load saved User-Agent:", e);
+            if (currentMembers < maxSlots) {
+                selectedAccount = acc;
+                console.log(`✅ Selected Account ID: ${acc.id} (Slots: ${currentMembers}/${maxSlots})`);
+                break;
             }
-        } else {
-            console.log(`🎭 Using Random User-Agent: ${userAgent.substring(0, 60)}...`);
         }
 
-        const browser = await puppeteer.launch({
-            executablePath: chromePath,
-            headless: process.env.CI ? "new" : false,
-            defaultViewport: null,
-            ignoreDefaultArgs: ['--enable-automation'],
-            args: [
-                '--incognito', // 🕵️‍♂️ Enable Incognito Mode
-                '--start-maximized',
-                // '--no-sandbox', // REMOVED: Triggers "unsupported flag" warning
-                // '--disable-setuid-sandbox', // REMOVED: Triggers "unsupported flag" warning
-                '--disable-blink-features=AutomationControlled',
-                '--disable-infobars',
-                '--disable-features=IsolateOrigins,site-per-process',
-                // Timezone spoofing to match IP (General Asia/Jakarta for ID IP)
-                '--timezone=Asia/Jakarta'
-            ]
-        });
-
-        // Use Incognito Context
-        const context = await browser.createBrowserContext();
-
-        // GRANT PERMISSIONS FOR CLIPBOARD ACCESS
-        await context.overridePermissions('https://www.canva.com', ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']);
-
-        const page = await context.newPage();
-
-        // Set realistic user-agent (Stealth Plugin handles most fingerprints, but UA is good to set)
-        await page.setUserAgent(userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-
-        // 🧠 HUMAN-LIKE BEHAVIOR HELPERS
-        const randomDelay = (min: number, max: number) =>
-            new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
-
-        const humanType = async (element: any, text: string) => {
-            await element.click();
-            await randomDelay(300, 600); // Think before typing
-
-            for (const char of text) {
-                await page.keyboard.type(char, {
-                    delay: Math.random() * 150 + 50 // 50-200ms per char (realistic)
-                });
-
-                // Random micro-pauses (like humans thinking)
-                if (Math.random() < 0.15) { // 15% chance of pause
-                    await randomDelay(200, 500);
-                }
-            }
-        };
-
-        const humanClick = async (selector: string) => {
-            const element = await page.$(selector);
-            if (element) {
-                // Move mouse to element first (hover)
-                const box = await element.boundingBox();
-                if (box) {
-                    await page.mouse.move(
-                        box.x + box.width / 2 + (Math.random() * 10 - 5), // Random offset
-                        box.y + box.height / 2 + (Math.random() * 10 - 5)
-                    );
-                    await randomDelay(100, 300); // Hover pause
-                }
-                await element.click();
-                await randomDelay(200, 500); // Post-click pause
-                return true;
-            }
-            return false;
-        };
-
-        const randomScroll = async () => {
-            // Occasional random scrolls (humans browse naturally)
-            await page.evaluate(() => {
-                window.scrollBy({
-                    top: Math.random() * 200 - 100,
-                    behavior: 'smooth'
-                });
-            });
-            await randomDelay(500, 1000);
-        };
-
-        // SET USER AGENT FROM DB
-        try {
-            // console.log("🕵️ Fetching User-Agent from DB..."); 
-            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
-            if (uaRes.rows.length > 0) {
-                const dbUA = uaRes.rows[0].value as string;
-                await page.setUserAgent(dbUA);
-                console.log("   ✅ User-Agent set from DB!");
-            } else {
-                console.log("   ℹ️ No custom User-Agent in DB, using default.");
-            }
-        } catch (e: any) {
-            console.log("   ⚠️ Failed to set User-Agent:", e.message);
+        // Fallback: If all full, use the LAST account (to at least try or show error)
+        if (!selectedAccount) {
+            console.warn("⚠️ All Accounts are FULL! Using the last account as fallback.");
+            selectedAccount = accounts[accounts.length - 1];
         }
 
-        // AUTHENTICATION STRATEGY: COOKIE PRIORITY -> EMAIL/PASSWORD FALLBACK
-        const cookieFile = 'auth_cookies.json';
+        // ============================================================================
+        // AUTHENTICATION (COOKIE ONLY)
+        // ============================================================================
+        const cookieStr = selectedAccount.cookie as string;
+        let cookies: any[] = [];
         let isLoggedIn = false;
 
-        // 0. TRY DB COOKIE FIRST (Dynamic Update)
         try {
-            console.log("🍪 Checking 'canva_cookie' in DB...");
-            const cookieRes = await sql("SELECT value FROM settings WHERE key = 'canva_cookie'");
-            if (cookieRes.rows.length > 0) {
-                const cookieStr = cookieRes.rows[0].value as string;
-                let cookies: any[] = [];
-
-                try {
-                    // 1. Try JSON Parse
-                    cookies = JSON.parse(cookieStr);
-                } catch (e) {
-                    // 2. If JSON fails, assume raw cookie string (key=value; key=value)
-                    // console.log("   ℹ️ Cookie is not JSON, parsing as raw string...");
-                    cookies = cookieStr.split(';').map(part => {
-                        const [name, ...rest] = part.trim().split('=');
-                        if (!name || rest.length === 0) return null;
-                        return {
-                            name: name,
-                            value: rest.join('='),
-                            domain: '.canva.com',
-                            path: '/',
-                            httpOnly: false,
-                            secure: true,
-                            sameSite: 'Lax'
-                        };
-                    }).filter(c => c !== null);
-                }
-
-                // Normalisasi array (jika user upload single object)
-                if (!Array.isArray(cookies)) cookies = [cookies];
-
-                // Filter jika kosong atau invalid
-                if (cookies.length === 0) {
-                    console.log("   ⚠️ DB Cookie is empty or invalid format.");
-                    throw new Error("Invalid Cookie Format");
-                }
-
-                await page.setCookie(...cookies);
-                console.log(`   ✅ Loaded ${cookies.length} cookies from DB.`);
-
-                // Verify Session
-                try {
-                    await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                } catch (navErr: any) {
-                    console.log(`   ⚠️ Session verify nav timeout (ignoring): ${navErr.message}`);
-                }
-                await randomDelay(3000, 5000);
-
-                if (!page.url().includes('login') && !page.url().includes('signup')) {
-                    console.log("   ✅ Session Restored via DB Cookie!");
-                    isLoggedIn = true;
-                } else {
-                    console.log("   ❌ DB Cookie Expired. Trying local file...");
-                    await sendSystemLog("⚠️ <b>PERINGATAN COOKIE MATI!</b>\n\nCookie di database terdeteksi EXPIRED atau INVALID saat login.\nMohon segera update dengan command <code>/set_cookie</code> agar bot tetap berjalan lancar.");
-                }
-            } else {
-                console.log("   ℹ️ No cookie in DB.");
+            // Parse Cookie (JSON or String)
+            try {
+                cookies = JSON.parse(cookieStr);
+            } catch {
+                cookies = cookieStr.split(';').map(part => {
+                    const [name, ...rest] = part.trim().split('=');
+                    if (!name) return null;
+                    return { name, value: rest.join('='), domain: '.canva.com', path: '/', secure: true };
+                }).filter(c => c !== null);
             }
+
+            if (!Array.isArray(cookies)) cookies = [cookies];
+
+            // Set Cookies
+            await page.setCookie(...cookies);
+            console.log(`   🍪 Loaded ${cookies.length} cookies for Account ID ${selectedAccount.id}.`);
+
+            // Verify Session
+            await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await randomDelay(3000, 5000);
+
+            if (!page.url().includes('login') && !page.url().includes('signup')) {
+                console.log("   ✅ Login Success via Cookie!");
+                isLoggedIn = true;
+            } else {
+                console.error(`   ❌ Account ID ${selectedAccount.id} Cookie EXPIRED!`);
+                await sendSystemLog(`⚠️ <b>Akun Mati!</b>\nID: ${selectedAccount.id}\nCookie Expired. Mohon update dgn /addaccount lagi.`);
+
+                // Disable Account? Optionally
+                // await sql("UPDATE canva_accounts SET is_active = 0 WHERE id = ?", [selectedAccount.id]);
+                throw new Error("Selected Account Cookie Invalid. Skipping job.");
+            }
+
         } catch (e: any) {
-            console.error("   ⚠️ Failed to load DB cookie:", e.message);
+            throw new Error(`Auth Failed for Account ${selectedAccount.id}: ${e.message}`);
         }
 
-        // 1. TRY LOCAL COOKIE FILE (Fallback)
-        if (!isLoggedIn && fs.existsSync(cookieFile)) {
+        // ============================================================================
+        // AUTO-DISCOVERY (METADATA SCRAPING)
+        // ============================================================================
+        // If Email or Team ID is missing, fetch it now.
+        if (!selectedAccount.email || !selectedAccount.team_id || accounts.length === 1) { // Always check for single account update
             try {
-                console.log(`🍪 Found ${cookieFile}. Attempting Session Restore...`);
-                const cookiesStr = fs.readFileSync(cookieFile, 'utf-8');
-                const cookies = JSON.parse(cookiesStr);
+                console.log("🕵️ Auto-Discovery: Updating Account Metadata...");
 
-                // Set cookies
-                await page.setCookie(...cookies);
-                console.log(`   Loaded ${cookies.length} cookies.`);
+                // 1. Get Team ID (from URL or API)
+                // Current URL might be: https://www.canva.com/brand/TEAM_ID/....
+                const currentUrl = page.url();
+                const brandMatch = currentUrl.match(/brand\/([a-zA-Z0-9_-]+)/);
+                let detectedTeamId = brandMatch ? brandMatch[1] : null;
 
-                // Verify Session
-                try {
-                    await page.goto('https://www.canva.com/folder/all-designs', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                } catch (navErr: any) {
-                    console.log(`   ⚠️ Session verify nav timeout (ignoring if URL valid): ${navErr.message}`);
+                // 2. Get Email (from Settings)
+                let detectedEmail = null;
+                if (!selectedAccount.email) {
+                    await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2' });
+                    await randomDelay(2000, 3000);
+                    detectedEmail = await page.evaluate(() => {
+                        // Try finding email in inputs or text
+                        const emailEl = document.querySelector('p[data-cy="email-address"]'); // Theoretical selector
+                        return emailEl ? emailEl.textContent : null;
+                    });
+                    // Fallback: If scraping fails, maybe infer or skip
                 }
-                await randomDelay(3000, 5000);
 
-                if (page.url().includes('login') || page.url().includes('signup')) {
-                    console.log("   ❌ Cookie Expired or Invalid. Falling back to Email Login...");
-                } else {
-                    console.log("   ✅ Session Restored via Cookie! Bypassing Login.");
-                    isLoggedIn = true;
+                if (detectedTeamId || detectedEmail) {
+                    await sql(`
+                        UPDATE canva_accounts 
+                        SET team_id = COALESCE(?, team_id), 
+                            email = COALESCE(?, email),
+                            last_used = datetime('now', '+7 hours')
+                        WHERE id = ?
+                    `, [detectedTeamId, detectedEmail, selectedAccount.id]);
+                    console.log(`   ✅ Metadata Updated: Team=${detectedTeamId || 'Keep'}, Email=${detectedEmail || 'Keep'}`);
+
+                    // Update Local Var
+                    if (detectedTeamId) selectedAccount.team_id = detectedTeamId;
                 }
 
             } catch (e) {
-                console.error("   ⚠️ Failed to load cookies:", e);
+                console.warn("   ⚠️ Auto-Discovery Warning (Non-Fatal):", e);
             }
-        }
-
-        const canvaEmail = process.env.CANVA_EMAIL;
-        const canvaPassword = process.env.CANVA_PASSWORD;
-
-        if (!isLoggedIn && canvaEmail && canvaPassword) {
-            console.log(`🔐 Attempting Login with Email: ${canvaEmail}...`);
-            await page.goto('https://www.canva.com/login', { waitUntil: 'networkidle2' });
-
-            // Random initial idle (like human arriving at page)
-            await randomDelay(1500, 3000);
-
-            try {
-                // STEP 1: Click "Continue with email" button
-                console.log("   [1/5] Looking for 'Continue with email' button...");
-                await randomDelay(1000, 2000); // Human reads the page
-
-                // Occasional scroll to mimic browsing
-                if (Math.random() < 0.3) await randomScroll();
-
-                const continueWithEmailBtn = await page.evaluate(() => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const btn = buttons.find(b => b.textContent?.includes('Continue with email'));
-                    if (btn) {
-                        btn.click();
-                        return true;
-                    }
-                    return false;
-                });
-
-                if (!continueWithEmailBtn) {
-                    console.log("   'Continue with email' button not found, might be direct email form");
-                }
-
-                await randomDelay(1200, 2500); // Wait for form transition
-
-                // STEP 2: Enter Email (HUMAN-LIKE TYPING)
-                console.log("   [2/5] Entering Email...");
-                const emailInput = await page.waitForSelector('input.bCVoGQ, input[type="email"], input[name="email"]', { timeout: 10000 });
-                if (emailInput) {
-                    await humanType(emailInput, canvaEmail); // Use human typing!
-                }
-
-                // STEP 3: Click "Continue" button (span with text "Continue")
-                console.log("   [3/5] Clicking Continue...");
-                await randomDelay(800, 1500); // Think before clicking
-
-                const continueClicked = await page.evaluate(() => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    const continueSpan = spans.find(s => s.textContent?.trim() === 'Continue');
-                    if (continueSpan) {
-                        const button = continueSpan.closest('button');
-                        if (button) {
-                            button.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-
-                if (!continueClicked) {
-                    console.log("   Continue button not found, trying Enter key...");
-                    await emailInput?.press('Enter');
-                }
-
-                // STEP 4: Wait for Password Field & Enter Password
-                console.log("   [4/5] Waiting for password field...");
-                await randomDelay(2500, 4000); // Give extra time for transition/re-render
-
-                // Re-fetch selector to avoid "Detached Node" error
-                const inputSelector = 'input[type="password"], input.bCVoGQ';
-                await page.waitForSelector(inputSelector, { timeout: 15000 });
-                const passInput = await page.$(inputSelector);
-
-                if (passInput) {
-                    console.log("   [4/5] Entering Password...");
-                    await randomDelay(500, 1000); // Pause before typing
-                    await humanType(passInput, canvaPassword); // Human typing!
-                } else {
-                    throw new Error("Password input field not found after wait.");
-                }
-
-                // STEP 5: Click "Log in" button (span with text "Log in")
-                console.log("   [5/5] Clicking Log in...");
-                await randomDelay(1000, 2000); // Think before final click
-
-                const loginClicked = await page.evaluate(() => {
-                    const spans = Array.from(document.querySelectorAll('span'));
-                    const loginSpan = spans.find(s => s.textContent?.trim() === 'Log in');
-                    if (loginSpan) {
-                        const button = loginSpan.closest('button');
-                        if (button) {
-                            button.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-
-                if (!loginClicked) {
-                    console.log("   Log in button not found, trying Enter key...");
-                    await passInput?.press('Enter');
-                }
-
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => console.log("   Navigation timeout (might be AJAX login)"));
-                console.log("   ✅ Login Submitted. checking access...");
-
-                // Human pause after login
-                await randomDelay(2000, 4000);
-
-                // CAPTURE LOGIN SUCCESS SCREENSHOT
-                const loginShotPath = `login_success_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: loginShotPath, quality: 60, type: 'jpeg' });
-                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, loginShotPath, `✅ <b>Login Success</b>\nBerhasil masuk ke akun Canva!`);
-                    if (fs.existsSync(loginShotPath)) fs.unlinkSync(loginShotPath);
-                } catch (e) { console.error("Snapshot failed", e); }
-
-                await randomDelay(2000, 3000); // Allow redirect
-
-            } catch (loginErr: any) {
-                console.error("❌ Login Failed:", loginErr);
-                const shotPath = `login_fail_${Date.now()}.jpg`;
-                try {
-                    await page.screenshot({ path: shotPath });
-                    await sendTelegramPhoto(LOG_CHANNEL_ID || ADMIN_ID, shotPath, `❌ <b>Login Failed</b>\nReason: ${loginErr.message}`);
-                    if (fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
-                } catch (e) { console.error("Screenshot failed", e); }
-
-                // DISABLED COOKIE FALLBACK - Force Email/Password Login Only
-                throw new Error("Email/Password login required. Cookie fallback disabled.");
-            }
-        } else if (!isLoggedIn) {
-            throw new Error("CANVA_EMAIL and CANVA_PASSWORD must be set in .env (or valid auth_cookies.json required)");
         }
 
         // COOKIE LOADING DISABLED - Using Fresh Login Only
@@ -559,6 +300,7 @@ async function runPuppeteerQueue() {
         }
         */
 
+        const teamId = selectedAccount.team_id;
         let successInvites = 0;
         let failInvites = 0;
         let successKicks = 0;
@@ -706,12 +448,12 @@ async function runPuppeteerQueue() {
                 });
 
                 if (teamMemberCount > 0) {
-                    console.log(`📊 Team Slots: ${teamMemberCount}/500`);
-                    await sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('canva_team_members_count', ?)", [teamMemberCount.toString()]);
+                    console.log(`📊 Team Slots: ${teamMemberCount}/${selectedAccount.max_slots}`);
+                    await sql("UPDATE canva_accounts SET member_count = ?, last_used = datetime('now', '+7 hours') WHERE id = ?", [teamMemberCount, selectedAccount.id]);
 
-                    if (teamMemberCount >= 500) {
-                        console.error("⚠️ TEAM FULL! Slot mencapai 500/500.");
-                        await sendSystemLog(`⚠️ <b>PERINGATAN SLOT PENUH!</b>\nJumlah anggota mencapai limit 500.\nBot mungkin akan gagal invite.`);
+                    if (teamMemberCount >= selectedAccount.max_slots) {
+                        console.error("⚠️ TEAM FULL! Slot mencapai limit.");
+                        await sendSystemLog(`⚠️ <b>PERINGATAN SLOT PENUH!</b>\nAkun ID: ${selectedAccount.id} (${selectedAccount.email})\nJumlah anggota: ${teamMemberCount}/${selectedAccount.max_slots}.`);
                     }
                 }
 
@@ -810,8 +552,8 @@ async function runPuppeteerQueue() {
             const currentCookies = await page.cookies();
             if (currentCookies.length > 0) {
                 const cookieJson = JSON.stringify(currentCookies);
-                await sql("INSERT INTO settings (key, value) VALUES ('canva_cookie', ?) ON CONFLICT(key) DO UPDATE SET value = ?", [cookieJson, cookieJson]);
-                console.log("🍪 [SESSION] Cookies Auto-Refreshed & Saved to DB! (Session Extended)");
+                await sql("UPDATE canva_accounts SET cookie = ?, last_used = datetime('now', '+7 hours') WHERE id = ?", [cookieJson, selectedAccount.id]);
+                console.log(`🍪 [SESSION] Cookies Auto-Refreshed & Saved to Account ${selectedAccount.id}!`);
             }
         } catch (e) {
             console.error("⚠️ Failed to auto-save cookies:", e);

@@ -132,29 +132,29 @@ async function start() {
                 const userAgent = await page.evaluate(() => navigator.userAgent);
                 console.log(`🕵️ User-Agent: ${userAgent.substring(0, 50)}...`);
 
-                await sql(
-                    `INSERT INTO settings (key, value) VALUES ('canva_cookie', ?) 
-                    ON CONFLICT(key) DO UPDATE SET value = ?`,
-                    [finalCookie, finalCookie]
-                );
-
-                await sql(
-                    `INSERT INTO settings (key, value) VALUES ('canva_user_agent', ?) 
-                    ON CONFLICT(key) DO UPDATE SET value = ?`,
-                    [userAgent, userAgent]
-                );
-
                 // Auto detect Team ID from URL
                 const currentUrl = page.url();
+                let teamId = null;
                 const teamMatch = currentUrl.match(/brand\/([^\/]+)/);
                 if (teamMatch) {
-                    const tid = teamMatch[1];
-                    await sql(
-                        `INSERT INTO settings (key, value) VALUES ('canva_team_id', ?) 
-                        ON CONFLICT(key) DO UPDATE SET value = ?`,
-                        [tid, tid]
-                    );
+                    teamId = teamMatch[1];
                 }
+
+                console.log(`🆔 Team ID Detected: ${teamId || 'Unknown'}`);
+
+                // INSERT TO CANVA_ACCOUNTS
+                // We check if this Team ID already exists to avoid duplicates, OR just insert as new node.
+                // Decision: Insert as new active node.
+                await sql(
+                    `INSERT INTO canva_accounts (cookie, team_id, email, is_active, created_at, last_used) 
+                     VALUES (?, ?, ?, 1, datetime('now', '+7 hours'), datetime('now', '+7 hours'))`,
+                    [finalCookie, teamId, 'Auto-Detected (Login)']
+                );
+
+                console.log(`✅ AKUN BARU DITAMBAHKAN KE DATABASE (Table: canva_accounts)!`);
+
+                // Legacy support (Optional: Update settings just in case something uses it, but clearing it is safer)
+                // await sql("DELETE FROM settings WHERE key = 'canva_cookie'");
 
                 console.log("✅ SEMUA DATA TERSIMPAN!");
                 console.log("🔐 Menutup browser dalam 3 detik...");
