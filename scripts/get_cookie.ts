@@ -28,6 +28,13 @@ async function start() {
         process.exit(1);
     }
 
+    // Get Global User Agent
+    let globalUA = "";
+    try {
+        const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+        if (uaRes.rows.length > 0) globalUA = uaRes.rows[0].value as string;
+    } catch { console.log("⚠️ Failed to fetch custom UA, using default."); }
+
     console.log("🚀 Meluncurkan Chrome untuk Login Canva...");
     console.log("⏳ Silakan LOGIN ke Canva di window Chrome yang terbuka...");
 
@@ -44,6 +51,10 @@ async function start() {
     });
 
     const page = await browser.newPage();
+    if (globalUA) {
+        console.log(`   🎭 Apply Custom UA: ${globalUA.substring(0, 30)}...`);
+        await page.setUserAgent(globalUA);
+    }
 
     // Anti-detection simple script
     await page.evaluateOnNewDocument(() => {

@@ -1489,6 +1489,31 @@ bot.command("setua", async (ctx) => {
     }
 });
 
+// Command: Delete Account (Node)
+bot.command("deleteaccount", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    const nodeId = parseInt(ctx.match as string);
+    if (isNaN(nodeId)) {
+        return ctx.reply("⚠️ <b>Format Salah!</b>\nGunakan: <code>/deleteaccount ID</code>\nContoh: <code>/deleteaccount 1</code>", { parse_mode: "HTML" });
+    }
+
+    try {
+        // Check if exists
+        const check = await sql("SELECT id FROM canva_accounts WHERE id = ?", [nodeId]);
+        if (check.rows.length === 0) {
+            return ctx.reply(`❌ Node #${nodeId} tidak ditemukan.`);
+        }
+
+        // Delete
+        await sql("DELETE FROM canva_accounts WHERE id = ?", [nodeId]);
+        await ctx.reply(`✅ <b>Node #${nodeId} Berhasil Dihapus!</b>\nDatabase telah diperbarui.`);
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
+});
+
 // Command: Test Expire (Force Expire in X Minutes)
 bot.command("tesexp", async (ctx) => {
     // Debug Log
