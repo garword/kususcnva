@@ -111,11 +111,26 @@ bot.command("channels", async (ctx) => {
 });
 
 // STARTUP: Set Bot Commands (Menu Button)
+// STARTUP: Set Bot Commands (Menu Button)
+// 1. Default commands for everyone
 bot.api.setMyCommands([
     { command: "start", description: "Mulai Bot / Restart" },
     { command: "aktivasi", description: "Aktivasi Akun via Email" },
     { command: "help", description: "Daftar Perintah Lengkap" },
-]).catch(console.error);
+], { scope: { type: "default" } }).catch(console.error);
+
+// 2. Special commands for Admin ID
+if (ADMIN_ID) {
+    bot.api.setMyCommands([
+        { command: "admin", description: "👮 Panel Admin" },
+        { command: "tesexp", description: "🧪 Test Expire (Debug)" },
+        { command: "data", description: "📂 Export Data User" },
+        { command: "broadcast", description: "📢 Broadcast Users" },
+        { command: "set_cookie", description: "🍪 Set Cookie" },
+        { command: "set_channels", description: "📢 Set Channels" },
+        { command: "start", description: "Mulai Bot / Restart" },
+    ], { scope: { type: "chat", chat_id: ADMIN_ID } }).catch(e => console.error("Failed to set admin commands:", e));
+}
 
 // Handler: 📖 Panduan
 bot.hears("📖 Panduan", async (ctx) => {
