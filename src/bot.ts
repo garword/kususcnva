@@ -1879,45 +1879,7 @@ bot.on("message:document", async (ctx) => {
         }
     }
 });
-targetNodeId = parseInt(parts[1]);
-            }
 
-const doc = ctx.message.document;
-const file = await ctx.api.getFile(doc.file_id);
-const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-
-const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-const buffer = Buffer.from(response.data);
-let content = buffer.toString('utf-8');
-
-// Validate JSON
-try {
-    const parsed = JSON.parse(content);
-    content = JSON.stringify(parsed);
-} catch (e) {
-    return ctx.api.editMessageText(ctx.chat.id, msg.message_id, "❌ Validasi JSON Gagal.");
-}
-
-// Save
-if (targetNodeId) {
-    const exist = await sql("SELECT id FROM canva_accounts WHERE id = ?", [targetNodeId]);
-    if (exist.rows.length > 0) {
-        await sql("UPDATE canva_accounts SET cookie = ?, is_active = 1, email = 'Pending Check', team_id = NULL, last_used = datetime('now','+7 hours') WHERE id = ?", [content, targetNodeId]);
-        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>Node #${targetNodeId} Updated!</b>`);
-    } else {
-        await sql("INSERT INTO canva_accounts (id, cookie, created_at, email) VALUES (?, ?, datetime('now', '+7 hours'), 'Pending Check')", [targetNodeId, content]);
-        await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>Node #${targetNodeId} Created!</b>`);
-    }
-} else {
-    await sql("INSERT INTO canva_accounts (cookie, created_at, email) VALUES (?, datetime('now', '+7 hours'), 'Pending Check')", [content]);
-    await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `✅ <b>New Node Added!</b>`);
-}
-
-        } catch (e: any) {
-    await ctx.api.editMessageText(ctx.chat.id, msg.message_id, `❌ Error: ${e.message}`);
-}
-    }
-});
 
 // Command: List Accounts
 bot.command("listaccounts", async (ctx) => {
