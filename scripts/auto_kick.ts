@@ -224,16 +224,21 @@ async function kickEnforcer() {
                     let kickSuccess = false;
                     let clickedButtonText = "";
 
-                    // Strategy: Find the "Remove from team" button first (High Confidence)
+                    // Strategy: Find the "Remove" button (Bulk Action Bar)
+                    // LOGS REVEAL: The primary button has EMPTY text but has aria-label="Remove users"
                     for (const btn of buttons) {
                         const txtRaw = await btn.evaluate((e: any) => e.innerText);
+                        const ariaLabel = await btn.evaluate((e: any) => e.getAttribute('aria-label')) || "";
                         const txt = txtRaw.toLowerCase();
+                        const aria = ariaLabel.toLowerCase();
 
-                        // Strict Match first: "Remove from team", "Hapus dari tim"
-                        if ((txt.includes('remove') || txt.includes('hapus')) && (txt.includes('team') || txt.includes('tim'))) {
-                            console.log(`   🖱️ Clicking Primary Button: "${txtRaw}"`);
+                        // Check ARIA Label first (for Icon Buttons) OR Text
+                        if (aria.includes('remove users') || aria.includes('hapus pengguna') ||
+                            ((txt.includes('remove') || txt.includes('hapus')) && (txt.includes('team') || txt.includes('tim')))) {
+
+                            console.log(`   🖱️ Clicking Primary Button: "${ariaLabel || txtRaw}"`);
                             await btn.click();
-                            clickedButtonText = txtRaw;
+                            clickedButtonText = ariaLabel || txtRaw;
 
                             // Wait for Modal
                             await randomDelay(1000, 2000);
@@ -242,17 +247,17 @@ async function kickEnforcer() {
                         }
                     }
 
-                    // Fallback: If no strict match, try generic "Remove" (Lower Confidence)
+                    // Fallback: If no strict match, find ANY button with "Remove" in text or aria
                     if (!kickSuccess) {
                         console.log("   ⚠️ Strict button not found. Trying generic 'Remove'...");
                         for (const btn of buttons) {
                             const txtRaw = await btn.evaluate((e: any) => e.innerText);
-                            const txt = txtRaw.toLowerCase();
+                            const ariaLabel = await btn.evaluate((e: any) => e.getAttribute('aria-label')) || "";
 
-                            if (txt.trim() === 'remove' || txt.trim() === 'hapus') {
-                                console.log(`   🖱️ Clicking Fallback Button: "${txtRaw}"`);
+                            if ((txtRaw && txtRaw.toLowerCase().includes('remove')) || (ariaLabel && ariaLabel.toLowerCase().includes('remove'))) {
+                                console.log(`   🖱️ Clicking Fallback Button: "${ariaLabel || txtRaw}"`);
                                 await btn.click();
-                                clickedButtonText = txtRaw;
+                                clickedButtonText = ariaLabel || txtRaw;
 
                                 await randomDelay(1000, 2000);
                                 kickSuccess = await handleConfirmation(page);
