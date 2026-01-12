@@ -364,20 +364,41 @@ async function runPuppeteerQueue() {
                 const viaCodeBtn = await page.waitForSelector('button[aria-label="Via code"]', { timeout: 10000 });
                 if (viaCodeBtn) {
                     await viaCodeBtn.click();
-                    await new Promise(r => setTimeout(r, 2000));
+                    await randomDelay(2000, 3000);
 
-                    const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 10000 });
-                    if (copyCodeBtn) {
-                        await copyCodeBtn.click();
-                        await new Promise(r => setTimeout(r, 1000));
-                        const code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
-                        if (code) {
-                            globalInviteData = { success: true, message: code };
-                            console.log(`   [DEBUG] Success! Class Code/Link retrieved: ${code}`);
-                        } else {
-                            throw new Error("Clipboard empty after copy");
+                    // Try to scrape the code from the UI first (More reliable than clipboard)
+                    let code = await page.evaluate(() => {
+                        // Look for the large code text (usually 6 digits/letters)
+                        const allDivs = Array.from(document.querySelectorAll('div, span, h1, h2, h3, p'));
+                        for (const el of allDivs) {
+                            const text = el.innerText?.trim();
+                            // Code is usually 6 alphanumeric chars, e.g. "ABC 123" or "ABC123"
+                            // Canva codes are often spaced out or in specific containers
+                            if (text && /^[A-Z0-9]{3} [A-Z0-9]{3}$/.test(text)) return text.replace(' ', '');
+                            if (text && /^[A-Z0-9]{6}$/.test(text)) return text;
                         }
-                    } else throw new Error("Copy code button not found");
+                        return null;
+                    });
+
+                    if (code) {
+                        console.log(`   [DEBUG] Scraped Code from UI: ${code}`);
+                    } else {
+                        // Fallback: Clipboard
+                        console.log("   [DEBUG] UI Scrape failed, trying Clipboard...");
+                        const copyCodeBtn = await page.waitForSelector('button[aria-label="Copy code"]', { timeout: 10000 });
+                        if (copyCodeBtn) {
+                            await copyCodeBtn.click();
+                            await new Promise(r => setTimeout(r, 1000));
+                            code = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+                        }
+                    }
+
+                    if (code) {
+                        globalInviteData = { success: true, message: code };
+                        console.log(`   [DEBUG] Success! Class Code retrieved: ${code}`);
+                    } else {
+                        throw new Error("Clipboard empty & UI scrape failed");
+                    }
                 } else throw new Error("Via code button not found");
 
             } catch (e: any) {
