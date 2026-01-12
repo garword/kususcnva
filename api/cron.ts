@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // 1. Check for Expired Subs (Active & Past End Date)
         const result = await sql(`
             SELECT count(*) as count FROM subscriptions 
-            WHERE status = 'active' AND end_date < datetime('now')
+            WHERE status = 'active' AND end_date < datetime('now', '+7 hours')
         `);
 
         const count = result.rows[0].count as number;

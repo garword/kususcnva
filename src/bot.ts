@@ -1594,7 +1594,7 @@ async function getNextSlotInfo(): Promise<string> {
         const slotRes = await sql(`
             SELECT MIN(end_date) as next_slot 
             FROM subscriptions 
-            WHERE status = 'active' AND end_date > datetime('now')
+            WHERE status = 'active' AND end_date > datetime('now', '+7 hours')
         `);
 
         if (slotRes.rows.length > 0 && slotRes.rows[0].next_slot) {
