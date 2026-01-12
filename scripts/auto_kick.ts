@@ -64,6 +64,8 @@ async function kickEnforcer() {
         SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'active'
         UNION
         SELECT email FROM users WHERE status = 'pending_invite'
+        UNION
+        SELECT email FROM users WHERE status = 'active'
     `);
     const expiredSubRes = await sql(`SELECT u.email FROM subscriptions s JOIN users u ON s.user_id = u.id WHERE s.status = 'expired'`);
     const staleRes = await sql(`SELECT email FROM users WHERE status = 'pending_invite' AND joined_at < datetime('now', '+7 hours', '-1 hour')`);
