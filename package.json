@@ -14,6 +14,7 @@
         "set-webhook": "ts-node scripts/set_webhook.ts",
         "revoke-stale": "ts-node scripts/revoke_stale.ts",
         "sync-members": "ts-node scripts/sync_member_count.ts",
+        "db:fix": "ts-node scripts/fix_consistency.ts",
         "maintenance": "npm run process-queue && npm run auto-kick && npm run sync-members"
     },
     "keywords": [
