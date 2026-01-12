@@ -1568,114 +1568,138 @@ bot.hears("📊 Cek Slot", async (ctx) => {
 // Command: Add Account via Cookie (Cookie-Only)
 // Command: Add Account via Cookie (Cookie-Only)
 bot.command("addaccount", async (ctx) => {
-    console.log(`[DEBUG] /addaccount triggered by ${ctx.from?.id}`);
-
-    // Explicit Auth Error for Debugging
-    if (!isAdmin(ctx.from?.id || 0)) {
-        console.log(`[DEBUG] Access Denied. AdminID=${process.env.ADMIN_ID}, UserID=${ctx.from?.id}`);
-        return ctx.reply(`❌ <b>Akses Ditolak!</b>\nID Anda (${ctx.from?.id}) tidak cocok dengan ADMIN_ID server.`, { parse_mode: "HTML" });
-    }
-
-    let input = (ctx.match as string || "").trim();
-    const doc = ctx.msg.document || ctx.msg.reply_to_message?.document;
-    let targetNodeId: number | null = null;
-    let cookieStr = "";
-
-    // 1. Check if input is a Node ID (numeric) AND file is present
-    if (doc && /^\d+$/.test(input)) {
-        targetNodeId = parseInt(input);
-        input = ""; // Clear input so it's not treated as cookie
-    }
-    // 2. Logic to detect if input is actually the cookie string (if no doc)
-    else if (!doc && input.length > 0) {
-        cookieStr = input;
-    }
-
-    // 3. Handle File Upload (Direct Caption or Reply)
-    if (doc) {
-        try {
-            const loading = await ctx.reply("⏳ <b>Mengunduh file...</b>", { parse_mode: "HTML" });
-
-            // Basic Validation
-            if (doc.file_size && doc.file_size > 100 * 1024) { // Limit 100KB
-                return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ File terlalu besar (Max 100KB).");
-            }
-
-            // Get File Path
-            const file = await ctx.api.getFile(doc.file_id);
-            const filePath = file.file_path;
-
-            if (!filePath) {
-                return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ Gagal mendapatkan path file.");
-            }
-
-            // Construct Download URL
-            const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
-
-            // Download Content
-            const response = await axios.get(downloadUrl, {
-                responseType: 'arraybuffer'
-            });
-            const buffer = Buffer.from(response.data);
-            let content = buffer.toString('utf-8');
-
-            // Validate simple JSON format
-            try {
-                const parsed = JSON.parse(content);
-                content = JSON.stringify(parsed);
-            } catch (e) {
-                return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ <b>Format Salah!</b> file bukan JSON valid.");
-            }
-
-            cookieStr = content;
-            await ctx.api.deleteMessage(ctx.chat.id, loading.message_id);
-
-        } catch (e: any) {
-            return ctx.reply(`❌ Gagal membaca file: ${e.message}`);
-        }
-    }
-    // 4. Handle Reply to Text (Legacy)
-    else if (!cookieStr && ctx.msg.reply_to_message) {
-        if ("text" in ctx.msg.reply_to_message) {
-            cookieStr = ctx.msg.reply_to_message.text || "";
-        }
-    }
-
-    // If still empty
-    if (!cookieStr) {
-        return ctx.reply(
-            `➕ <b>Tambah/Update Akun Canva</b>\n\n` +
-            `<b>Mode Baru (Update Node):</b>\n` +
-            `• Upload JSON + Caption: <code>/addaccount 2</code> (Update Node 2)\n\n` +
-            `<b>Mode Biasa (Tambah Baru):</b>\n` +
-            `• Upload JSON + Caption: <code>/addaccount</code>\n` +
-            `• Text: <code>/addaccount [COOKIE_STRING]</code>\n`,
-            { parse_mode: "HTML" }
-        );
-    }
+    // 1. Immediate Feedback (To confirm bot receives command)
+    const debugMsg = await ctx.reply("🏃 <b>Processing Command...</b>", { parse_mode: "HTML" });
 
     try {
-        if (targetNodeId) {
-            // MODE: UPDATE EXISTING / SPECIFIC ID
-            // Check if exists logic or just upsert?
-            // SQLite INSERT OR REPLACE can be used but we want to be careful with existing AUTOINC logic checking.
-            // Let's check first.
-            const exist = await sql("SELECT id FROM canva_accounts WHERE id = ?", [targetNodeId]);
-            if (exist.rows.length > 0) {
-                await sql("UPDATE canva_accounts SET cookie = ?, is_active = 1, email = 'Pending Check', team_id = NULL, last_used = datetime('now','+7 hours') WHERE id = ?", [cookieStr, targetNodeId]);
-                await ctx.reply(`✅ <b>Node #${targetNodeId} Berhasil Diupdate!</b>\nCookie diganti & status di-reset.`);
-            } else {
-                // Insert with specific ID (if not exists)
-                await sql("INSERT INTO canva_accounts (id, cookie, created_at, email) VALUES (?, ?, datetime('now', '+7 hours'), 'Pending Check')", [targetNodeId, cookieStr]);
-                await ctx.reply(`✅ <b>Node #${targetNodeId} Berhasil Dibuat!</b>\n(ID Spesifik)`);
-            }
-        } else {
-            // MODE: ADD NEW (AUTO ID)
-            await sql("INSERT INTO canva_accounts (cookie, created_at, email) VALUES (?, datetime('now', '+7 hours'), 'Pending Check')", [cookieStr]);
-            await ctx.reply(`✅ <b>Akun Baru Berhasil Ditambahkan!</b>\nMenunggu Auto-Discovery...`);
+        console.log(`[DEBUG] /addaccount triggered by ${ctx.from?.id}`);
+
+        // 2. Auth Check with Detailed Feedback
+        const adminIdEnv = parseInt(process.env.ADMIN_ID || "0");
+        const userId = ctx.from?.id || 0;
+
+        if (userId !== adminIdEnv) {
+            console.log(`[DEBUG] Access Denied. AdminID=${adminIdEnv}, UserID=${userId}`);
+            return ctx.api.editMessageText(
+                ctx.chat.id,
+                debugMsg.message_id,
+                `❌ <b>Akses Ditolak!</b>\n\n` +
+                `🆔 User ID: <code>${userId}</code>\n` +
+                `🔐 Server Admin ID: <code>${adminIdEnv}</code>\n\n` +
+                `Pastikan ADMIN_ID di Vercel sama dengan User ID Anda!`
+            );
         }
-    } catch (e: any) {
-        await ctx.reply(`❌ Gagal simpan akun: ${e.message}`);
+
+        // Delete debug message if auth ok (optional, or edit it later)
+        await ctx.api.deleteMessage(ctx.chat.id, debugMsg.message_id).catch(() => { });
+
+
+        let input = (ctx.match as string || "").trim();
+        const doc = ctx.msg.document || ctx.msg.reply_to_message?.document;
+        let targetNodeId: number | null = null;
+        let cookieStr = "";
+
+        // 1. Check if input is a Node ID (numeric) AND file is present
+        if (doc && /^\d+$/.test(input)) {
+            targetNodeId = parseInt(input);
+            input = ""; // Clear input so it's not treated as cookie
+        }
+        // 2. Logic to detect if input is actually the cookie string (if no doc)
+        else if (!doc && input.length > 0) {
+            cookieStr = input;
+        }
+
+        // 3. Handle File Upload (Direct Caption or Reply)
+        if (doc) {
+            try {
+                const loading = await ctx.reply("⏳ <b>Mengunduh file...</b>", { parse_mode: "HTML" });
+
+                // Basic Validation
+                if (doc.file_size && doc.file_size > 100 * 1024) { // Limit 100KB
+                    return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ File terlalu besar (Max 100KB).");
+                }
+
+                // Get File Path
+                const file = await ctx.api.getFile(doc.file_id);
+                const filePath = file.file_path;
+
+                if (!filePath) {
+                    return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ Gagal mendapatkan path file.");
+                }
+
+                // Construct Download URL
+                const downloadUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${filePath}`;
+
+                // Download Content
+                const response = await axios.get(downloadUrl, {
+                    responseType: 'arraybuffer'
+                });
+                const buffer = Buffer.from(response.data);
+                let content = buffer.toString('utf-8');
+
+                // Validate simple JSON format
+                try {
+                    const parsed = JSON.parse(content);
+                    content = JSON.stringify(parsed);
+                } catch (e) {
+                    return ctx.api.editMessageText(ctx.chat.id, loading.message_id, "❌ <b>Format Salah!</b> file bukan JSON valid.");
+                }
+
+                cookieStr = content;
+                await ctx.api.deleteMessage(ctx.chat.id, loading.message_id);
+
+            } catch (e: any) {
+                return ctx.reply(`❌ Gagal membaca file: ${e.message}`);
+            }
+        }
+        // 4. Handle Reply to Text (Legacy)
+        else if (!cookieStr && ctx.msg.reply_to_message) {
+            if ("text" in ctx.msg.reply_to_message) {
+                cookieStr = ctx.msg.reply_to_message.text || "";
+            }
+        }
+
+        // If still empty
+        if (!cookieStr) {
+            return ctx.reply(
+                `➕ <b>Tambah/Update Akun Canva</b>\n\n` +
+                `<b>Mode Baru (Update Node):</b>\n` +
+                `• Upload JSON + Caption: <code>/addaccount 2</code> (Update Node 2)\n\n` +
+                `<b>Mode Biasa (Tambah Baru):</b>\n` +
+                `• Upload JSON + Caption: <code>/addaccount</code>\n` +
+                `• Text: <code>/addaccount [COOKIE_STRING]</code>\n`,
+                { parse_mode: "HTML" }
+            );
+        }
+
+        try {
+            if (targetNodeId) {
+                // MODE: UPDATE EXISTING / SPECIFIC ID
+                // Check if exists logic or just upsert?
+                // SQLite INSERT OR REPLACE can be used but we want to be careful with existing AUTOINC logic checking.
+                // Let's check first.
+                const exist = await sql("SELECT id FROM canva_accounts WHERE id = ?", [targetNodeId]);
+                if (exist.rows.length > 0) {
+                    await sql("UPDATE canva_accounts SET cookie = ?, is_active = 1, email = 'Pending Check', team_id = NULL, last_used = datetime('now','+7 hours') WHERE id = ?", [cookieStr, targetNodeId]);
+                    await ctx.reply(`✅ <b>Node #${targetNodeId} Berhasil Diupdate!</b>\nCookie diganti & status di-reset.`);
+                } else {
+                    // Insert with specific ID (if not exists)
+                    await sql("INSERT INTO canva_accounts (id, cookie, created_at, email) VALUES (?, ?, datetime('now', '+7 hours'), 'Pending Check')", [targetNodeId, cookieStr]);
+                    await ctx.reply(`✅ <b>Node #${targetNodeId} Berhasil Dibuat!</b>\n(ID Spesifik)`);
+                }
+            } else {
+                // MODE: ADD NEW (AUTO ID)
+                await sql("INSERT INTO canva_accounts (cookie, created_at, email) VALUES (?, datetime('now', '+7 hours'), 'Pending Check')", [cookieStr]);
+                await ctx.reply(`✅ <b>Akun Baru Berhasil Ditambahkan!</b>\nMenunggu Auto-Discovery...`);
+            }
+        } catch (e: any) {
+            await ctx.reply(`❌ Gagal simpan akun: ${e.message}`);
+        }
+
+    } catch (error: any) {
+        // Global Catch for /addaccount crash
+        console.error("[CRITICAL] /addaccount Crash:", error);
+        await ctx.reply(`❌ <b>Bot Error!</b>\n\n${error.message}`, { parse_mode: "HTML" });
     }
 });
 
