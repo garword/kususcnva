@@ -27,7 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const inputFile = new InputFile(buffer, fileName);
 
         // 4. Send to Channel/Admin
-        const targetId = process.env.BACKUP_CHANNEL_ID || process.env.ADMIN_ID;
+        // Priority: BACKUP_CHANNEL_ID -> LOG_CHANNEL_ID -> ADMIN_ID
+        const targetId = process.env.BACKUP_CHANNEL_ID || process.env.LOG_CHANNEL_ID || process.env.ADMIN_ID;
 
         if (!targetId) {
             return res.status(500).json({ error: "No BACKUP_CHANNEL_ID or ADMIN_ID configured." });
