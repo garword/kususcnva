@@ -131,6 +131,51 @@ async function syncMemberCount() {
                     continue;
                 }
 
+                // ===================================
+                // AUTO-DISCOVERY (Self-Healing)
+                // ===================================
+                const needsMetadata = !account.email || account.email === 'Unknown' || !account.team_id;
+
+                if (needsMetadata) {
+                    console.log("   🕵️ Metadata Missing! Starting Auto-Discovery...");
+
+                    // 1. Capture Team ID from URL
+                    // URL is likely https://www.canva.com/brand/TEAM_ID/people or similar
+                    const currentUrl = page.url();
+                    const brandMatch = currentUrl.match(/brand\/([a-zA-Z0-9_-]+)/);
+                    const detectedTeamId = brandMatch ? brandMatch[1] : null;
+
+                    // 2. Capture Email (If missing)
+                    let detectedEmail = null;
+                    if (!account.email || account.email === 'Unknown') {
+                        try {
+                            console.log("   📧 Checking Email settings...");
+                            await page.goto("https://www.canva.com/settings/your-account", { waitUntil: 'networkidle2', timeout: 30000 });
+                            detectedEmail = await page.evaluate(() => {
+                                // Common selectors for email in Canva settings
+                                const p = document.querySelector('p[data-cy="email-address"]');
+                                if (p) return p.textContent;
+                                return null;
+                            });
+                            // Return to People page to continue counting
+                            if (detectedTeamId || account.team_id) {
+                                const tid = detectedTeamId || account.team_id;
+                                await page.goto(`https://www.canva.com/brand/${tid}/people`, { waitUntil: 'domcontentloaded' });
+                            }
+                        } catch (e) { console.log("   ⚠️ Email check failed:", e); }
+                    }
+
+                    if (detectedTeamId || detectedEmail) {
+                        console.log(`   ✅ UPDATING DB: Team=${detectedTeamId || 'Keep'}, Email=${detectedEmail || 'Keep'}`);
+                        await sql(`
+                            UPDATE canva_accounts 
+                            SET team_id = COALESCE(?, team_id), 
+                                email = COALESCE(?, email)
+                            WHERE id = ?
+                        `, [detectedTeamId, detectedEmail, account.id]);
+                    }
+                }
+
                 // Scroll
                 console.log("   📜 Scrolling...");
                 await page.evaluate(async () => {
