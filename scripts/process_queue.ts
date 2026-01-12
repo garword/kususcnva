@@ -37,6 +37,9 @@ function getChromePath() {
     return null;
 }
 
+// Helper: Random Delay
+const randomDelay = (min: number, max: number) => new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
+
 // Helper to edit existing Telegram message
 async function editTelegramMessage(chatId: string | number, messageId: number, text: string, options: any = {}) {
     if (!BOT_TOKEN) return null;
