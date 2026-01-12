@@ -1146,21 +1146,28 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     let expDateObj = null;
 
     if (sub) {
-        status = "✅ Premium Active";
+        // Real-time Expiry Check
+        const now = new Date();
         expDateObj = new Date(sub.end_date as string);
         expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
 
-        // Dynamic Plan Label based on Duration
-        const now = new Date();
-        const diffMs = expDateObj.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        const diffMonths = (diffDays / 30).toFixed(1);
-
-        // If very long duration, show simpler month count
-        if (diffDays > 35) {
-            plan = `Premium (±${Math.round(diffDays / 30)} Bulan)`;
+        if (expDateObj < now) {
+            status = "❌ Expired";
+            plan = "❌ Expired";
         } else {
-            plan = (sub.plan_name as string) || "-"; // Fallback to DB name for short term
+            status = "✅ Premium Active";
+
+            // Dynamic Plan Label based on Duration
+            const diffMs = expDateObj.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            const diffMonths = (diffDays / 30).toFixed(1);
+
+            // If very long duration, show simpler month count
+            if (diffDays > 35) {
+                plan = `Premium (±${Math.round(diffDays / 30)} Bulan)`;
+            } else {
+                plan = (sub.plan_name as string) || "-"; // Fallback to DB name for short term
+            }
         }
     }
     const points = user.referral_points || 0;
@@ -1334,14 +1341,19 @@ bot.callbackQuery("view_account_list", async (ctx) => {
                 const expDate = new Date(row.end_date);
                 expStr = TimeUtils.format(expDate);
 
-                // Check Duration for "User Premium" label
-                // If active > 1 month (approx > 35 days remaining)
                 const now = new Date();
-                const diffMs = expDate.getTime() - now.getTime();
-                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-                if (diffDays > 35) {
-                    plan = "User Premium";
+                if (expDate < now) {
+                    plan = "❌ Expired";
+                } else {
+                    // Check Duration for "User Premium" label
+                    // If active > 1 month (approx > 35 days remaining)
+                    const diffMs = expDate.getTime() - now.getTime();
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+                    if (diffDays > 35) {
+                        plan = "User Premium";
+                    }
                 }
             }
 
