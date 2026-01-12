@@ -368,14 +368,24 @@ async function runPuppeteerQueue() {
 
                     // Try to scrape the code from the UI first (More reliable than clipboard)
                     let code = await page.evaluate(() => {
-                        // Look for the large code text (usually 6 digits/letters)
+                        // Look for the large code text
                         const allDivs = Array.from(document.querySelectorAll('div, span, h1, h2, h3, p'));
                         for (const el of allDivs) {
-                            const text = el.innerText?.trim();
-                            // Code is usually 6 alphanumeric chars, e.g. "ABC 123" or "ABC123"
-                            // Canva codes are often spaced out or in specific containers
-                            if (text && /^[A-Z0-9]{3} [A-Z0-9]{3}$/.test(text)) return text.replace(' ', '');
-                            if (text && /^[A-Z0-9]{6}$/.test(text)) return text;
+                            let text = el.innerText?.trim();
+                            if (!text) continue;
+
+                            // 1. Format: "ABC - DEF - GHI" (New Detected Format)
+                            if (/^[A-Z0-9]{3}\s?[-–]\s?[A-Z0-9]{3}\s?[-–]\s?[A-Z0-9]{3}$/i.test(text)) {
+                                return text.replace(/[-–\s]/g, ''); // Return clean string "ABCDEFGHI"
+                            }
+
+                            // 2. Format: "ABC 123" (Old Format)
+                            if (/^[A-Z0-9]{3}\s[A-Z0-9]{3}$/i.test(text)) {
+                                return text.replace(/\s/g, '');
+                            }
+
+                            // 3. Format: "ABC123DEF" (Contiguous)
+                            if (/^[A-Z0-9]{6,9}$/i.test(text)) return text;
                         }
                         return null;
                     });
