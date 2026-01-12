@@ -176,7 +176,7 @@ bot.hears("💸 Donasi", async (ctx) => {
         const donasiMsg = res.rows.length > 0 ? res.rows[0].value : null;
 
         if (donasiMsg) {
-            await ctx.reply(donasiMsg as string, { parse_mode: "HTML", disable_web_page_preview: true });
+            await ctx.reply(donasiMsg as string, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
         } else {
             // Default Message if not set
             await ctx.reply(
