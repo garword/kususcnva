@@ -1146,19 +1146,26 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     let expDateObj = null;
 
     if (sub) {
-        // Real-time Expiry Check
-        const now = new Date();
-        expDateObj = new Date(sub.end_date as string);
-        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+        // Real-time Expiry Check (Compare WIB vs WIB)
+        // DB stores WIB time as "Fake UTC" string (e.g., 17:30)
+        // So we parsed it as 17:30 UTC.
+        // We must shift 'now' (Real UTC 10:30) to WIB (17:30) for fair comparison.
+        const nowUTC = new Date();
+        const nowWIB = new Date(nowUTC.getTime() + (7 * 60 * 60 * 1000));
 
-        if (expDateObj < now) {
+        expDateObj = new Date(sub.end_date as string);
+
+        // Display using UTC because the Value IS ALREADY WIB (Fake UTC)
+        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'UTC' });
+
+        if (expDateObj < nowWIB) {
             status = "❌ Expired";
             plan = "❌ Expired";
         } else {
             status = "✅ Premium Active";
 
             // Dynamic Plan Label based on Duration
-            const diffMs = expDateObj.getTime() - now.getTime();
+            const diffMs = expDateObj.getTime() - nowWIB.getTime();
             const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
             const diffMonths = (diffDays / 30).toFixed(1);
 
@@ -1339,16 +1346,20 @@ bot.callbackQuery("view_account_list", async (ctx) => {
 
             if (row.end_date) {
                 const expDate = new Date(row.end_date);
-                expStr = TimeUtils.format(expDate);
+                // Use UTC to display raw WIB string
+                expStr = TimeUtils.format(expDate).replace("WIB", "").trim(); // TimeUtils defaults to Jakarta, so we might need manual string or just simple toLocale
 
-                const now = new Date();
+                // Force simpler formatting that respects the RAW value
+                expStr = expDate.toLocaleString('id-ID', { timeZone: 'UTC' });
 
-                if (expDate < now) {
+                const nowUTC = new Date();
+                const nowWIB = new Date(nowUTC.getTime() + (7 * 60 * 60 * 1000));
+
+                if (expDate < nowWIB) {
                     plan = "❌ Expired";
                 } else {
                     // Check Duration for "User Premium" label
-                    // If active > 1 month (approx > 35 days remaining)
-                    const diffMs = expDate.getTime() - now.getTime();
+                    const diffMs = expDate.getTime() - nowWIB.getTime();
                     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
                     if (diffDays > 35) {
