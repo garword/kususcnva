@@ -45,6 +45,15 @@ async function refreshSessions() {
         return;
     }
 
+    // 2. Get Global User Agent (Optional)
+    let globalUA = "";
+    try {
+        const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+        if (uaRes.rows.length > 0) globalUA = uaRes.rows[0].value as string;
+    } catch {
+        console.log("⚠️ Failed to fetch custom UA, using default.");
+    }
+
     const chromePath = getChromePath();
     if (!chromePath) throw new Error("Chrome not found!");
 
@@ -60,6 +69,12 @@ async function refreshSessions() {
 
     try {
         const page = await browser.newPage();
+
+        // Apply Custom UA if exists
+        if (globalUA) {
+            console.log(`   🎭 Apply Custom UA: ${globalUA.substring(0, 30)}...`);
+            await page.setUserAgent(globalUA);
+        }
 
         // Loop Accounts Sequentially
         for (const account of accounts) {
@@ -85,7 +100,6 @@ async function refreshSessions() {
                 await page.setCookie(...cookies);
 
                 // C. Active Navigation to Refresh Token
-                // Visiting /settings/your-account usually triggers a token refresh
                 console.log("   🌐 Navigating to Canva Settings...");
                 const targetUrl = account.team_id
                     ? `https://www.canva.com/brand/${account.team_id}/settings`

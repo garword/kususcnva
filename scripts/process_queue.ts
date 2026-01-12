@@ -165,6 +165,29 @@ async function runPuppeteerQueue() {
         const chromePath = getChromePath();
         if (!chromePath) throw new Error("Chrome tidak ditemukan!");
 
+        // 2a. Get Global User Agent
+        let globalUA = "";
+        try {
+            const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+            if (uaRes.rows.length > 0) globalUA = uaRes.rows[0].value as string;
+        } catch { console.log("⚠️ Failed to fetch custom UA, using default."); }
+
+        const browser = await puppeteer.launch({
+            executablePath: chromePath,
+            headless: process.env.CI ? 'new' : false,
+            args: [
+                '--no-sandbox', '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', '--start-maximized',
+                '--disable-blink-features=AutomationControlled'
+            ]
+        });
+
+        const page = await browser.newPage();
+        if (globalUA) {
+            console.log(`   🎭 Apply Custom UA: ${globalUA.substring(0, 30)}...`);
+            await page.setUserAgent(globalUA);
+        }
+
         // ============================================================================
         // MULTI-ACCOUNT SELECTOR (ROUND ROBIN / FILL FIRST)
         // ============================================================================

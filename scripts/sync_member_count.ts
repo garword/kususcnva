@@ -65,6 +65,13 @@ async function syncMemberCount() {
         return;
     }
 
+    // 2. Get Global User Agent
+    let globalUA = "";
+    try {
+        const uaRes = await sql("SELECT value FROM settings WHERE key = 'canva_user_agent'");
+        if (uaRes.rows.length > 0) globalUA = uaRes.rows[0].value as string;
+    } catch { console.log("⚠️ Failed to fetch custom UA, using default."); }
+
     const browser = await puppeteer.launch({
         executablePath: chromePath,
         headless: process.env.CI ? 'new' : false,
@@ -81,6 +88,10 @@ async function syncMemberCount() {
 
     try {
         const page = await browser.newPage();
+        if (globalUA) {
+            console.log(`   🎭 Apply Custom UA: ${globalUA.substring(0, 30)}...`);
+            await page.setUserAgent(globalUA);
+        }
         let totalClusterMembers = 0;
         let totalClusterPending = 0;
 
