@@ -1,7 +1,7 @@
 export default {
     async scheduled(event, env, ctx) {
-        // GANTI URL INI dengan domain Vercel Anda
-        const targetUrl = 'https://kususcnva.vercel.app/api/ping';
+        // GANTI URL INI dengan domain Vercel Anda (Direct Bot Endpoint)
+        const targetUrl = 'https://kususcnva.vercel.app/api/webhook';
 
         console.log(`[KeepAlive] Pinging ${targetUrl}...`);
 
