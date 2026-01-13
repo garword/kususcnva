@@ -432,13 +432,25 @@ async function runPuppeteerQueue() {
 
                     try {
                         // DB UPDATE (Subscription + Active Status)
-                        const recentSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active' AND product_id = ? AND start_date > datetime('now', '+7 hours', '-1 hour')`, [userId, prodId]);
+                        // DB UPDATE (Subscription + Active Status)
+                        // Check for ANY active subscription to avoid duplicates
+                        const activeSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
 
-                        if (recentSubRes.rows.length === 0) {
+                        if (activeSubRes.rows.length > 0) {
+                            // Update existing (Extend/Replace)
+                            const existingId = activeSubRes.rows[0].id;
+                            const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
+                            const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
+
+                            await sql(`UPDATE subscriptions SET end_date = ?, product_id = ?, start_date = ? WHERE id = ?`, [endStr, prodId, startStr, existingId]);
+                            console.log(`   🔄 Updated existing subscription ${existingId}`);
+                        } else {
+                            // Insert New
                             const subId = `sub_${Date.now()}_${userId}`;
                             const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
                             const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
                             await sql(`INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'active')`, [subId, userId, prodId, startStr, endStr]);
+                            console.log(`   ➕ Created new subscription ${subId}`);
                         }
 
                         // NOTIFY USER
