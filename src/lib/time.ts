@@ -40,8 +40,12 @@ export class TimeUtils {
      */
     static nowWIB(): Date {
         const d = new Date();
-        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-        return new Date(utc + (3600000 * 7));
+        // Return d relative to UTC + 7 hours for display purposes
+        // If sys is UTC (23:00) -> WIB (06:00 next day)
+        // d.getTime() is absolute ms.
+        // We want a Date object whose .toISOString() *looks* like WIB string.
+        // So we fake the epoch.
+        return new Date(d.getTime() + (7 * 3600000));
     }
 
     /**

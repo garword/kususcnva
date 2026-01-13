@@ -494,12 +494,12 @@ async function runPuppeteerQueue() {
 
                             // Auto-Delete logic (DB Queue)
                             if (msgId) {
-                                // 2 Minutes from now (WIB)
-                                const deleteTime = TimeUtils.nowWIB();
-                                deleteTime.setMinutes(deleteTime.getMinutes() + 2);
-                                const deleteAtStr = deleteTime.toISOString().replace('T', ' ').substring(0, 19);
-
-                                await sql(`INSERT INTO message_queue (chat_id, message_id, delete_at) VALUES (?, ?, ?)`, [userId, msgId, deleteAtStr]);
+                                // Use DB Time to avoid Clock Skew (User Time vs DB Time)
+                                // We add 2 minutes to the current DB WIB time
+                                await sql(`
+                                    INSERT INTO message_queue (chat_id, message_id, delete_at) 
+                                    VALUES (?, ?, datetime('now', '+7 hours', '+2 minutes'))
+                                `, [userId, msgId]);
                             }
                         }
 
