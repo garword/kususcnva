@@ -151,7 +151,7 @@ async function runPuppeteerQueue() {
         FROM subscriptions s 
         JOIN users u ON s.user_id = u.id 
         JOIN products p ON s.product_id = p.id 
-        WHERE s.end_date < datetime('now') AND s.status = 'active'
+        WHERE s.end_date < datetime('now', '+7 hours') AND s.status = 'active'
     `);
 
     if (pendingInvites.rows.length === 0 && expiredUsers.rows.length === 0) {
@@ -425,29 +425,34 @@ async function runPuppeteerQueue() {
                     const userId = user.id as number;
                     const prodId = (user as any).prod_id || 1;
                     const duration = (user as any).duration_days || 30;
-                    const endDateObj = TimeUtils.addDays(duration);
-                    const endDateStr = TimeUtils.format(endDateObj);
+                    // WIB Date Object for End Date
+                    const endDateObj = TimeUtils.addDaysWIB(duration);
+                    // WIB String for DB
+                    const endDateStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
 
                     console.log(`   📧 Sending to ${email}...`);
 
                     try {
                         // DB UPDATE (Subscription + Active Status)
-                        // DB UPDATE (Subscription + Active Status)
-                        // Check for ANY active subscription to avoid duplicates
+                        // Check for ANY active subscription
                         const activeSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
 
                         if (activeSubRes.rows.length > 0) {
                             // Update existing (Extend/Replace)
                             const existingId = activeSubRes.rows[0].id;
-                            const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
-                            const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
+                            const startStr = TimeUtils.getWIBISOString();
 
-                            await sql(`UPDATE subscriptions SET end_date = ?, product_id = ?, start_date = ? WHERE id = ?`, [endStr, prodId, startStr, existingId]);
+                            // Important: For consistency, verify if we should just ADD to existing end_date or Replace.
+                            // The user previous request implies simple replacement/extension logic in queue is OK for now, 
+                            // as strict extension is handled in /aktivasi command. 
+                            // Here we just accept the duration from queue.
+
+                            await sql(`UPDATE subscriptions SET end_date = ?, product_id = ?, start_date = ? WHERE id = ?`, [endDateStr, prodId, startStr, existingId]);
                             console.log(`   🔄 Updated existing subscription ${existingId}`);
                         } else {
                             // Insert New
                             const subId = `sub_${Date.now()}_${userId}`;
-                            const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
+                            const startStr = TimeUtils.getWIBISOString();
                             const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
                             await sql(`INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'active')`, [subId, userId, prodId, startStr, endStr]);
                             console.log(`   ➕ Created new subscription ${subId}`);

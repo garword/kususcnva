@@ -516,14 +516,16 @@ async function checkTeamLimit(): Promise<{ isFull: boolean, nextSlot: string | n
         const slotRes = await sql(`
             SELECT MIN(end_date) as next_slot 
             FROM subscriptions 
-            WHERE status = 'active' AND end_date > datetime('now')
-        `);
+            WHERE status = 'active' AND end_date > datetime('now', '+7 hours')
+            `);
 
         let nextSlotStr = "Tidak diketahui";
         if (slotRes.rows.length > 0 && slotRes.rows[0].next_slot) {
             const dateStr = slotRes.rows[0].next_slot as string;
-            const date = new Date(dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
-            nextSlotStr = date.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + " WIB";
+            // Parse WIB String directly
+            const t = dateStr.split(/[- :]/);
+            const date = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]), parseInt(t[3]), parseInt(t[4]), parseInt(t[5]));
+            nextSlotStr = TimeUtils.format(date);
         }
 
         return { isFull: true, nextSlot: nextSlotStr };
@@ -566,7 +568,7 @@ async function handleActivation(ctx: any, emailInput: string) {
     const limitInfo = await checkTeamLimit();
     if (limitInfo.isFull && !isAdmin(userId)) {
         return ctx.reply(
-            `⛔ <b>Tim Canva Penuh! </b>\n\n` +
+            `⛔ <b>Tim Canva Penuh!</b>\n\n` +
             `Maaf, saat ini slot tim sudah mencapai batas (500/500).\n` +
             `Sistem tidak dapat menerima anggota baru.\n\n` +
             `⏳ <b>Slot Berikutnya Tersedia:</b>\n` +
@@ -598,7 +600,7 @@ async function handleActivation(ctx: any, emailInput: string) {
 
         // 1. Ambil Subscription Aktif (Jika Ada)
         const subRes = await sql(
-            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now')`,
+            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now', '+7 hours')`,
             [userId]
         );
         const activeSub = subRes.rows.length > 0 ? subRes.rows[0] : null;
@@ -1144,24 +1146,36 @@ bot.hears("👤 Profil Saya", async (ctx) => {
 
     if (sub) {
         // Real-time Expiry Check (Compare WIB vs WIB)
-        // DB stores WIB time as "Fake UTC" string (e.g., 17:30)
-        // So we parsed it as 17:30 UTC.
-        // We must shift 'now' (Real UTC 10:30) to WIB (17:30) for fair comparison.
-        const nowUTC = new Date();
-        const nowWIB = nowUTC; // Use UTC for comparison as DB is UTC
+        // DB stores "YYYY-MM-DD HH:MM:SS" which represents WIB time.
+        const nowWIB = TimeUtils.nowWIB();
 
-        expDateObj = new Date(sub.end_date as string);
-        // Ensure accurate UTC parsing
-        if (!(sub.end_date as string).includes('Z') && !(sub.end_date as string).includes('T')) {
-            // If DB is "YYYY-MM-DD HH:MM:SS" (UTC), force Z to treat as UTC
-            expDateObj = new Date((sub.end_date as string).replace(' ', 'T') + 'Z');
-        }
+        // Parse DB String (WIB) to Date Object
+        // If we trust DB is WIB, we treat it as such.
+        // We use string comparison for simplicity/robustness or parse manually.
+        const dbDateStr = sub.end_date as string;
 
-        // Display using WIB for User readability
-        // Note: toLocaleString with Asia/Jakarta AUTOMATICALLY shifts UTC to WIB.
-        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + " WIB";
+        // Manual Parse to avoid Timezone auto-conversion issues
+        // "2026-01-01 17:00:00" -> treat as pure values
+        const t = dbDateStr.split(/[- :]/);
+        // Date(year, monthIndex, day, hours, minutes, seconds)
+        const expDateObj = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]), parseInt(t[3]), parseInt(t[4]), parseInt(t[5]));
 
-        if (expDateObj < nowUTC) {
+        // Now 'expDateObj' created this way uses SYSTEM timezone (likely UTC in Vercel).
+        // BUT 'nowWIB' also uses SYSTEM timezone but with values shifted +7.
+        // So comparing them is valid (Apples to Apples).
+
+        /* 
+           Wait, there is a risk: 
+           If Vercel is UTC:
+           nowWIB() returns a Date object where .getHours() is +7 from real UTC.
+           new Date(y, m, d...) creates a Date object where .getHours() is y,m,d (mapped to UTC).
+           So yes, they are comparable!
+        */
+
+        // Display
+        expDate = TimeUtils.format(expDateObj); // .format() expects a Date object
+
+        if (expDateObj < nowWIB) {
             status = "❌ Expired";
             plan = "❌ Expired";
         } else {

@@ -20,9 +20,9 @@ async function fixConsistency() {
 
             for (const user of ghostUsers.rows) {
                 const subId = `sub_fix_${Date.now()}_${user.id}`;
-                const startStr = TimeUtils.now().toISOString().replace('T', ' ').substring(0, 19);
+                const startStr = TimeUtils.getWIBISOString();
                 // Default to 30 days from now
-                const endObj = TimeUtils.addDays(30);
+                const endObj = TimeUtils.addDaysWIB(30);
                 const endStr = endObj.toISOString().replace('T', ' ').substring(0, 19);
 
                 await sql(`

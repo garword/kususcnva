@@ -33,10 +33,30 @@ export class TimeUtils {
     }
 
     /**
-     * Add days to current date
+     * Get current Date object shifted to WIB (UTC+7).
+     * WARNING: The 'time' value of this object will be WIB, but methods like getHours() 
+     * might still be confused if system is not UTC. 
+     * Best used for string formatting or relative comparison if both are shifted.
      */
-    static addDays(days: number): Date {
+    static nowWIB(): Date {
         const d = new Date();
+        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+        return new Date(utc + (3600000 * 7));
+    }
+
+    /**
+     * Get current timestamp formatted as readable WIB string for Database
+     * Format: "YYYY-MM-DD HH:mm:ss"
+     */
+    static getWIBISOString(): string {
+        return this.nowWIB().toISOString().replace('T', ' ').substring(0, 19);
+    }
+
+    /**
+     * Add days to current WIB date
+     */
+    static addDaysWIB(days: number): Date {
+        const d = this.nowWIB();
         d.setDate(d.getDate() + days);
         return d;
     }
