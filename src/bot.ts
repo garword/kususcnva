@@ -17,6 +17,11 @@ if (!token) throw new Error("BOT_TOKEN hilang!");
 
 export const bot = new Bot<MyContext>(token);
 
+// DEBUG COMMAND: Pure Telegram Response (No DB)
+bot.command("pingbot", async (ctx) => {
+    await ctx.reply("🏓 <b>Pong!</b>\nBot is reachable.\nServer: Vercel Serverless", { parse_mode: "HTML" });
+});
+
 // ============================================================
 // MIDDLEWARE & UTILITAS
 // ============================================================
