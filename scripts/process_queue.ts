@@ -88,6 +88,24 @@ async function deleteTelegramMessage(chatId: string | number, messageId: number)
     }
 }
 
+async function processMessageQueue() {
+    console.log("🧹 Processing Message Deletion Queue...");
+    try {
+        // Select expired messages (WIB comparison)
+        const expired = await sql(`SELECT * FROM message_queue WHERE delete_at < datetime('now', '+7 hours')`);
+
+        if (expired.rows.length > 0) {
+            console.log(`   🗑️ Found ${expired.rows.length} messages to delete.`);
+            for (const msg of expired.rows) {
+                await deleteTelegramMessage(msg.chat_id, msg.message_id as number); // safe cast
+                await sql(`DELETE FROM message_queue WHERE id = ?`, [msg.id]);
+            }
+        }
+    } catch (e: any) {
+        console.error("❌ Error processing message queue:", e.message);
+    }
+}
+
 // Helper to log to the dedicated channel
 async function sendSystemLog(message: string) {
     const target = LOG_CHANNEL_ID || ADMIN_ID;
@@ -474,8 +492,15 @@ async function runPuppeteerQueue() {
                                 if (!msgId) msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
                             }
 
-                            // Auto-Delete logic
-                            if (msgId) setTimeout(() => { deleteTelegramMessage(userId, msgId); }, 120 * 1000);
+                            // Auto-Delete logic (DB Queue)
+                            if (msgId) {
+                                // 2 Minutes from now (WIB)
+                                const deleteTime = TimeUtils.nowWIB();
+                                deleteTime.setMinutes(deleteTime.getMinutes() + 2);
+                                const deleteAtStr = deleteTime.toISOString().replace('T', ' ').substring(0, 19);
+
+                                await sql(`INSERT INTO message_queue (chat_id, message_id, delete_at) VALUES (?, ?, ?)`, [userId, msgId, deleteAtStr]);
+                            }
                         }
 
                         // Mark Active
@@ -492,6 +517,11 @@ async function runPuppeteerQueue() {
                 failInvites += pendingInvites.rows.length;
             }
         }
+
+        // ========================================================================
+        // PROCESS MESSAGE DELETION QUEUE
+        // ========================================================================
+        await processMessageQueue();
 
         // ========================================================================
         // PROCESS KICKS
