@@ -1225,7 +1225,8 @@ bot.hears("📖 Panduan", async (ctx) => {
     );
 });
 
-bot.hears("👨‍💻 Admin Panel", async (ctx) => {
+// Shared Admin Panel Logic
+const showAdminPanel = async (ctx: MyContext) => {
     if (!isAdmin(ctx.from?.id || 0)) return ctx.reply("⛔ Menu ini khusus Admin.");
 
     // Menu Admin
@@ -1256,7 +1257,11 @@ bot.hears("👨‍💻 Admin Panel", async (ctx) => {
             reply_markup: adminKeyboard
         }
     );
-});
+};
+
+// Register Admin Commands & Button
+bot.command(["admin", "panel"], showAdminPanel);
+bot.hears("👨‍💻 Admin Panel", showAdminPanel);
 
 // Command: Soft Reset (Reset Email)
 bot.command("reset_email", async (ctx) => {
@@ -1725,13 +1730,40 @@ bot.callbackQuery("adm_restore_guide", async (ctx) => {
 // Action: Export Text (Legacy /data)
 bot.callbackQuery("adm_export_txt", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
-    // Trigger /data logic (We can't call command directly easily, so we prompt user or duplicate logic)
-    // Prompt user is safer to avoid code duplication if we don't refactor /data to a function.
-    // Ideally we assume /data is refactored, but for now let's just instruct.
-    // OR we can copy the logic of /data here. The file is huge, let's look for /data.
-    // It's at the bottom.
+    // Trigger the /data logic manually since we can't easily call the command handler with different context
+    // Ideally we extract the logic, but for now let's just instruct or better yet, run the logic directly?
+    // Let's instructing to keeps things simple, or better yet, trigger the export function if we had one.
+    // For now, let's keep the instruction but ensure /data works!
     await ctx.reply("⏳ Silakan ketik <code>/data</code> untuk download laporan user.", { parse_mode: "HTML" });
     await ctx.answerCallbackQuery();
+});
+
+// Command: Data Export (.txt)
+bot.command("data", async (ctx) => {
+    if (!isAdmin(ctx.from?.id || 0)) return;
+
+    try {
+        await ctx.reply("⏳ <b>Generating User Data...</b>", { parse_mode: "HTML" });
+        const res = await sql("SELECT id, first_name, username, email, created_at FROM users ORDER BY created_at DESC");
+
+        let content = "ID | Name | Username | Email | Joined Date (UTC)\n";
+        content += "--------------------------------------------------\n";
+
+        res.rows.forEach((u: any) => {
+            content += `${u.id} | ${u.first_name} | ${u.username || '-'} | ${u.email || '-'} | ${u.created_at}\n`;
+        });
+
+        const buffer = Buffer.from(content, 'utf-8');
+        const fileName = `users-data-${new Date().toISOString().split('T')[0]}.txt`;
+
+        await ctx.replyWithDocument(new InputFile(buffer, fileName), {
+            caption: `📂 <b>User Data Export</b>\nTotal: ${res.rows.length} users.`,
+            parse_mode: "HTML"
+        });
+
+    } catch (e: any) {
+        await ctx.reply(`❌ Export Failed: ${e.message}`);
+    }
 });
 
 

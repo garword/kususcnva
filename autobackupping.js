@@ -32,5 +32,12 @@ export default {
         } catch (err) {
             console.error("❌ Fetch Error:", err.message);
         }
+    },
+
+    // Handle incoming HTTP requests
+    async fetch(request, env, ctx) {
+        return new Response('✅ <b>Backup Worker is Online!</b><br>This worker runs automatically via Cron Trigger.<br>Do not trigger manually usually.', {
+            headers: { 'content-type': 'text/html' },
+        });
     }
 };
