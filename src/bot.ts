@@ -1761,13 +1761,13 @@ bot.command("data", async (ctx) => {
 
     try {
         await ctx.reply("⏳ <b>Generating User Data...</b>", { parse_mode: "HTML" });
-        const res = await sql("SELECT id, first_name, username, email, created_at FROM users ORDER BY created_at DESC");
+        const res = await sql("SELECT id, first_name, username, email, joined_at FROM users ORDER BY joined_at DESC");
 
         let content = "ID | Name | Username | Email | Joined Date (UTC)\n";
         content += "--------------------------------------------------\n";
 
         res.rows.forEach((u: any) => {
-            content += `${u.id} | ${u.first_name} | ${u.username || '-'} | ${u.email || '-'} | ${u.created_at}\n`;
+            content += `${u.id} | ${u.first_name} | ${u.username || '-'} | ${u.email || '-'} | ${u.joined_at}\n`;
         });
 
         const buffer = Buffer.from(content, 'utf-8');
