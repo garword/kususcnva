@@ -292,111 +292,116 @@ bot.command("help", async (ctx) => {
 });
 
 bot.command("start", async (ctx) => {
-    const userId = ctx.from?.id;
-    const username = ctx.from?.username || "Guest";
-    const firstName = ctx.from?.first_name || "Guest";
+    try {
+        const userId = ctx.from?.id;
+        const username = ctx.from?.username || "Guest";
+        const firstName = ctx.from?.first_name || "Guest";
 
-    if (!userId) return;
+        if (!userId) return;
 
-    // 1. Cek apakah ini User Baru (untuk validasi Referral)
-    const checkUser = await sql("SELECT id FROM users WHERE id = ?", [userId]);
-    const isNewUser = checkUser.rows.length === 0;
+        // 1. Cek apakah ini User Baru (untuk validasi Referral)
+        const checkUser = await sql("SELECT id FROM users WHERE id = ?", [userId]);
+        const isNewUser = checkUser.rows.length === 0;
 
-    // 2. Simpan/Update User ke Database (Upsert)
-    // 2. Simpan/Update User ke Database (Upsert)
-    // Force selected_product_id = NULL for new users to enforce selection
-    await sql(
-        `INSERT INTO users (id, username, first_name, selected_product_id, joined_at) VALUES (?, ?, ?, NULL, datetime('now', '+7 hours'))
-     ON CONFLICT(id) DO UPDATE SET username = ?, first_name = ?`,
-        [userId, username, firstName, username, firstName]
-    );
-
-    // 3. Cek/Generate Referral Code
-    let userRes = await sql("SELECT * FROM users WHERE id = ?", [userId]);
-    let user = userRes.rows[0];
-
-    if (!user.referral_code) {
-        const refCode = `ref${userId}`;
-        await sql("UPDATE users SET referral_code = ? WHERE id = ?", [refCode, userId]);
-        user.referral_code = refCode;
-    }
-
-    // 4. Proses Referral (HANYA JIKA USER BARU)
-    const payload = ctx.match;
-
-    // Debug Log untuk User
-    if (payload && !isNewUser) {
-        console.log(`[REFERRAL] Skip: User ${userId} (${firstName}) sudah ada di database.`);
-    }
-
-    if (isNewUser && payload && payload !== user.referral_code) {
-        console.log(`[REFERRAL] Valid: User baru ${userId} dengan kode ${payload}`);
-        // Cari Referrer
-        const uplineRes = await sql("SELECT id, referral_points FROM users WHERE referral_code = ?", [payload]);
-        if (uplineRes.rows.length > 0) {
-            const upline = uplineRes.rows[0];
-
-            // Simpan Upline
-            await sql("UPDATE users SET referred_by = ? WHERE id = ?", [upline.id, userId]);
-
-            // Tambah Poin Upline
-            await sql("UPDATE users SET referral_points = referral_points + 1 WHERE id = ?", [upline.id]);
-
-            // Notifikasi Upline
-            try {
-                await ctx.api.sendMessage(
-                    upline.id as number,
-                    `🎉 <b>Referral Baru!</b>\n\n` +
-                    `User <b>${firstName}</b> telah terdaftar di database.\n` +
-                    `Total Poin: <b>${(upline.referral_points as number) + 1}</b>`,
-                    { parse_mode: "HTML" }
-                );
-            } catch (ignore) { }
-        }
-    }
-
-    // 5. Cek Force Subscribe
-    const isJoined = await checkMember(userId, ctx);
-    if (!isJoined) {
-        const rawChannels = await getForceSubChannels();
-        const keyboard = new InlineKeyboard();
-
-        rawChannels.forEach((raw, i) => {
-            const parts = raw.split('|');
-            const chId = parts[0].trim();
-            const chLink = parts[1] ? parts[1].trim() : "";
-
-            let url = chLink;
-            if (!url) {
-                url = chId.startsWith("@") ? `https://t.me/${chId.replace("@", "")}` : `https://t.me/c/${chId.replace("-100", "")}/1`;
-            }
-
-            keyboard.url(`📢 Channel ${i + 1}`, url).row();
-        });
-
-        keyboard.text("✅ Sudah Bergabung", "check_join");
-
-        return ctx.reply(
-            `⛔ <b>Akses Terkunci!</b>\n\n` +
-            `Halo ${firstName}, untuk menggunakan bot ini Anda <b>WAJIB JOIN</b> ke channel berikut:\n\n` +
-            `⚠️ <b>PERINGATAN KERAS:</b>\n` +
-            `Jika Anda keluar (leave) dari channel/grup ini, akun Canva Anda akan <b>OTOMATIS DI-KICK</b> oleh sistem kami!`,
-            { reply_markup: keyboard, parse_mode: "HTML" }
+        // 2. Simpan/Update User ke Database (Upsert)
+        // Force selected_product_id = NULL for new users to enforce selection
+        await sql(
+            `INSERT INTO users (id, username, first_name, selected_product_id, joined_at) VALUES (?, ?, ?, NULL, datetime('now', '+7 hours'))
+         ON CONFLICT(id) DO UPDATE SET username = ?, first_name = ?`,
+            [userId, username, firstName, username, firstName]
         );
-    }
 
-    await ctx.reply(
-        `Halo ${firstName}! Selamat datang di <b>Canva Bot</b>.\n\n` +
-        `Bot ini menyediakan akses Canva Pro/Edu dengan sistem Points.\n` +
-        `Kumpulkan poin dengan mengundang teman untuk mendapatkan akses Premium!\n\n` +
-        `🔗 <b>Link Referral Anda:</b>\n` +
-        `https://t.me/${ctx.me.username}?start=${user.referral_code}\n\n` +
-        `Silakan pilih menu di bawah ini.`,
-        {
-            reply_markup: mainMenu,
-            parse_mode: "HTML"
+        // 3. Cek/Generate Referral Code
+        let userRes = await sql("SELECT * FROM users WHERE id = ?", [userId]);
+        let user = userRes.rows[0];
+
+        if (!user.referral_code) {
+            const refCode = `ref${userId}`;
+            await sql("UPDATE users SET referral_code = ? WHERE id = ?", [refCode, userId]);
+            user.referral_code = refCode;
         }
-    );
+
+        // 4. Proses Referral (HANYA JIKA USER BARU)
+        const payload = ctx.match;
+
+        // Debug Log untuk User
+        if (payload && !isNewUser) {
+            console.log(`[REFERRAL] Skip: User ${userId} (${firstName}) sudah ada di database.`);
+        }
+
+        if (isNewUser && payload && payload !== user.referral_code) {
+            console.log(`[REFERRAL] Valid: User baru ${userId} dengan kode ${payload}`);
+            // Cari Referrer
+            const uplineRes = await sql("SELECT id, referral_points FROM users WHERE referral_code = ?", [payload]);
+            if (uplineRes.rows.length > 0) {
+                const upline = uplineRes.rows[0];
+
+                // Simpan Upline
+                await sql("UPDATE users SET referred_by = ? WHERE id = ?", [upline.id, userId]);
+
+                // Tambah Poin Upline
+                await sql("UPDATE users SET referral_points = referral_points + 1 WHERE id = ?", [upline.id]);
+
+                // Notifikasi Upline
+                try {
+                    await ctx.api.sendMessage(
+                        upline.id as number,
+                        `🎉 <b>Referral Baru!</b>\n\n` +
+                        `User <b>${firstName}</b> telah terdaftar di database.\n` +
+                        `Total Poin: <b>${(upline.referral_points as number) + 1}</b>`,
+                        { parse_mode: "HTML" }
+                    );
+                } catch (ignore) { }
+            }
+        }
+
+        // 5. Cek Force Subscribe
+        const isJoined = await checkMember(userId, ctx);
+        if (!isJoined) {
+            const rawChannels = await getForceSubChannels();
+            const keyboard = new InlineKeyboard();
+
+            rawChannels.forEach((raw, i) => {
+                const parts = raw.split('|');
+                const chId = parts[0].trim();
+                const chLink = parts[1] ? parts[1].trim() : "";
+
+                let url = chLink;
+                if (!url) {
+                    url = chId.startsWith("@") ? `https://t.me/${chId.replace("@", "")}` : `https://t.me/c/${chId.replace("-100", "")}/1`;
+                }
+
+                keyboard.url(`📢 Channel ${i + 1}`, url).row();
+            });
+
+            keyboard.text("✅ Sudah Bergabung", "check_join");
+
+            return ctx.reply(
+                `⛔ <b>Akses Terkunci!</b>\n\n` +
+                `Halo ${firstName}, untuk menggunakan bot ini Anda <b>WAJIB JOIN</b> ke channel berikut:\n\n` +
+                `⚠️ <b>PERINGATAN KERAS:</b>\n` +
+                `Jika Anda keluar (leave) dari channel/grup ini, akun Canva Anda akan <b>OTOMATIS DI-KICK</b> oleh sistem kami!`,
+                { reply_markup: keyboard, parse_mode: "HTML" }
+            );
+        }
+
+        await ctx.reply(
+            `Halo ${firstName}! Selamat datang di <b>Canva Bot</b>.\n\n` +
+            `Bot ini menyediakan akses Canva Pro/Edu dengan sistem Points.\n` +
+            `Kumpulkan poin dengan mengundang teman untuk mendapatkan akses Premium!\n\n` +
+            `🔗 <b>Link Referral Anda:</b>\n` +
+            `https://t.me/${ctx.me.username}?start=${user.referral_code}\n\n` +
+            `Silakan pilih menu di bawah ini.`,
+            {
+                reply_markup: mainMenu,
+                parse_mode: "HTML"
+            }
+        );
+
+    } catch (e: any) {
+        console.error("Critical Error in /start:", e);
+        await ctx.reply(`❌ <b>System Error!</b>\n\nGagal terhubung ke Database.\nPesan: <code>${e.message}</code>`, { parse_mode: "HTML" });
+    }
 });
 
 // Callback: Cek Join
