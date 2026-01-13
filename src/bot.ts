@@ -1761,13 +1761,20 @@ bot.command("data", async (ctx) => {
 
     try {
         await ctx.reply("⏳ <b>Generating User Data...</b>", { parse_mode: "HTML" });
-        const res = await sql("SELECT id, first_name, username, email, joined_at FROM users ORDER BY joined_at DESC");
+        // Join with subscriptions to get expiration date for active subs
+        const res = await sql(`
+            SELECT u.id, u.first_name, u.username, u.email, u.joined_at, s.end_date 
+            FROM users u 
+            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+            ORDER BY u.joined_at DESC
+        `);
 
-        let content = "ID | Name | Username | Email | Joined Date (UTC)\n";
-        content += "--------------------------------------------------\n";
+        let content = "ID | Name | Username | Email | Joined Date (UTC) | Exp Date (Active)\n";
+        content += "--------------------------------------------------------------------------------\n";
 
         res.rows.forEach((u: any) => {
-            content += `${u.id} | ${u.first_name} | ${u.username || '-'} | ${u.email || '-'} | ${u.joined_at}\n`;
+            const expDate = u.end_date ? u.end_date : '-';
+            content += `${u.id} | ${u.first_name} | ${u.username || '-'} | ${u.email || '-'} | ${u.joined_at} | ${expDate}\n`;
         });
 
         const buffer = Buffer.from(content, 'utf-8');
