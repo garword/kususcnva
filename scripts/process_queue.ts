@@ -151,7 +151,7 @@ async function runPuppeteerQueue() {
         FROM subscriptions s 
         JOIN users u ON s.user_id = u.id 
         JOIN products p ON s.product_id = p.id 
-        WHERE s.end_date < datetime('now', '+7 hours') AND s.status = 'active'
+        WHERE s.end_date < datetime('now') AND s.status = 'active'
     `);
 
     if (pendingInvites.rows.length === 0 && expiredUsers.rows.length === 0) {

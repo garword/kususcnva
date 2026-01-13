@@ -516,13 +516,14 @@ async function checkTeamLimit(): Promise<{ isFull: boolean, nextSlot: string | n
         const slotRes = await sql(`
             SELECT MIN(end_date) as next_slot 
             FROM subscriptions 
-            WHERE status = 'active' AND end_date > datetime('now', '+7 hours')
+            WHERE status = 'active' AND end_date > datetime('now')
         `);
 
         let nextSlotStr = "Tidak diketahui";
         if (slotRes.rows.length > 0 && slotRes.rows[0].next_slot) {
-            const date = new Date(slotRes.rows[0].next_slot as string);
-            nextSlotStr = date.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+            const dateStr = slotRes.rows[0].next_slot as string;
+            const date = new Date(dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+            nextSlotStr = date.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + " WIB";
         }
 
         return { isFull: true, nextSlot: nextSlotStr };
@@ -565,7 +566,7 @@ async function handleActivation(ctx: any, emailInput: string) {
     const limitInfo = await checkTeamLimit();
     if (limitInfo.isFull && !isAdmin(userId)) {
         return ctx.reply(
-            `⛔ <b>Tim Canva Penuh!</b>\n\n` +
+            `⛔ <b>Tim Canva Penuh! </b>\n\n` +
             `Maaf, saat ini slot tim sudah mencapai batas (500/500).\n` +
             `Sistem tidak dapat menerima anggota baru.\n\n` +
             `⏳ <b>Slot Berikutnya Tersedia:</b>\n` +
@@ -597,7 +598,7 @@ async function handleActivation(ctx: any, emailInput: string) {
 
         // 1. Ambil Subscription Aktif (Jika Ada)
         const subRes = await sql(
-            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now', '+7 hours')`,
+            `SELECT * FROM subscriptions WHERE user_id = ? AND status = 'active' AND end_date > datetime('now')`,
             [userId]
         );
         const activeSub = subRes.rows.length > 0 ? subRes.rows[0] : null;
@@ -1147,14 +1148,20 @@ bot.hears("👤 Profil Saya", async (ctx) => {
         // So we parsed it as 17:30 UTC.
         // We must shift 'now' (Real UTC 10:30) to WIB (17:30) for fair comparison.
         const nowUTC = new Date();
-        const nowWIB = new Date(nowUTC.getTime() + (7 * 60 * 60 * 1000));
+        const nowWIB = nowUTC; // Use UTC for comparison as DB is UTC
 
         expDateObj = new Date(sub.end_date as string);
+        // Ensure accurate UTC parsing
+        if (!(sub.end_date as string).includes('Z') && !(sub.end_date as string).includes('T')) {
+            // If DB is "YYYY-MM-DD HH:MM:SS" (UTC), force Z to treat as UTC
+            expDateObj = new Date((sub.end_date as string).replace(' ', 'T') + 'Z');
+        }
 
-        // Display using UTC because the Value IS ALREADY WIB (Fake UTC)
-        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'UTC' });
+        // Display using WIB for User readability
+        // Note: toLocaleString with Asia/Jakarta AUTOMATICALLY shifts UTC to WIB.
+        expDate = expDateObj.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + " WIB";
 
-        if (expDateObj < nowWIB) {
+        if (expDateObj < nowUTC) {
             status = "❌ Expired";
             plan = "❌ Expired";
         } else {
