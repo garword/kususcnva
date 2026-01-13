@@ -22,6 +22,23 @@ bot.command("pingbot", async (ctx) => {
     await ctx.reply("🏓 <b>Pong!</b>\nBot is reachable.\nServer: Vercel Serverless", { parse_mode: "HTML" });
 });
 
+// Middleware: Logger & Debug
+bot.use(async (ctx, next) => {
+    try {
+        const user = ctx.from?.username || ctx.from?.id || "Unknown";
+        const action = ctx.message?.text || ctx.callbackQuery?.data || "Update";
+        console.log(`[UPDATE] ${user}: ${action}`);
+    } catch (e) {
+        console.error("Logger Error:", e);
+    }
+    await next();
+});
+
+// Command: Version Check
+bot.command("pingver", async (ctx) => {
+    await ctx.reply("🤖 <b>System Ready</b>\nVersion: v2.1 (Admin Fix + Queue Fix)", { parse_mode: "HTML" });
+});
+
 // ============================================================
 // MIDDLEWARE & UTILITAS
 // ============================================================
