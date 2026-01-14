@@ -154,6 +154,10 @@ async function sendTelegramPhoto(chatId: string | number, photoPath: string, cap
 async function runPuppeteerQueue() {
     console.log("🦾 Queue Processor Started...");
 
+    // 0. Always Process Message Deletion Queue First
+    // (This ensures messages are deleted even if there are no invites/kicks)
+    await processMessageQueue();
+
     // 1. Fetch Queued Items with Detailed Info
     // Join with products based on selected_product_id
     const pendingInvites = await sql(`
@@ -521,7 +525,10 @@ async function runPuppeteerQueue() {
         // ========================================================================
         // PROCESS MESSAGE DELETION QUEUE
         // ========================================================================
-        await processMessageQueue();
+        // ========================================================================
+        // PROCESS MESSAGE DELETION QUEUE (Moved to Start)
+        // ========================================================================
+        // await processMessageQueue();
 
         // ========================================================================
         // PROCESS KICKS
