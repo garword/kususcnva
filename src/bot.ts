@@ -2511,8 +2511,9 @@ bot.command("addlogtopik", async (ctx) => {
 bot.command("data", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
 
+    let loadingMsg;
     try {
-        await ctx.reply("⏳ <b>Mengambil Data Laporan...</b>\nMohon tunggu sebentar.", { parse_mode: "HTML" });
+        loadingMsg = await ctx.reply("⏳ <b>Mengambil Data Laporan...</b>\nMohon tunggu sebentar.", { parse_mode: "HTML" });
 
         // 1. Query Data Lengkap (Join Users + Subscriptions + Products)
         const res = await sql(`
@@ -2535,6 +2536,7 @@ bot.command("data", async (ctx) => {
         `);
 
         if (res.rows.length === 0) {
+            if (loadingMsg) await ctx.api.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => { });
             return ctx.reply("❌ Tidak ada data user di database.");
         }
 
@@ -2588,6 +2590,8 @@ bot.command("data", async (ctx) => {
         // Grammy InputFile from Buffer
         const inputFile = new InputFile(buffer, fileName);
 
+        if (loadingMsg) await ctx.api.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => { });
+
         await ctx.replyWithDocument(inputFile, {
             caption: `📊 <b>Laporan Data User</b>\n📅 Tanggal: ${nowStr}\n👤 Total: ${res.rows.length} User`,
             parse_mode: "HTML"
@@ -2595,6 +2599,7 @@ bot.command("data", async (ctx) => {
 
     } catch (e: any) {
         console.error("Export Error:", e);
+        if (loadingMsg) await ctx.api.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => { });
         await ctx.reply(`❌ Gagal export data: ${e.message}`);
     }
 });
