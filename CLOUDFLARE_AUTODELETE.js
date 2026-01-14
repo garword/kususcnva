@@ -48,7 +48,8 @@ async function checkAndDelete(env) {
         // Wait, Turso/SQLite over HTTP handles 'now' on the SERVER side. 
         // If Turso server is UTC, 'now' is UTC.
         // We stick to the logic: delete_at is WIB. So compare db_now + 7h.
-        const sqlQuery = "SELECT * FROM message_queue WHERE delete_at < datetime('now', '+7 hours')";
+        // LIMIT 50: Prevent Worker Timeout if there are too many messages (Batch Processing)
+        const sqlQuery = "SELECT * FROM message_queue WHERE delete_at < datetime('now', '+7 hours') LIMIT 50";
 
         const queryResp = await fetch(dbEndpoint, {
             method: "POST",
