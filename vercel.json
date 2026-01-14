@@ -1,1 +1,15 @@
-{ \" "outputDirectory\: \public\, \functions\: { \api/**/*.ts\: { \memory\: 1024, maxDuration: 60 } }, \rewrites\: [ { \source\: \/api/webhook\, \destination\: \/api/webhook\ } ] } 
+{
+    "outputDirectory": "public",
+    "functions": {
+        "api/**/*.ts": {
+            "memory": 1024,
+            "maxDuration": 60
+        }
+    },
+    "rewrites": [
+        {
+            "source": "/api/webhook",
+            "destination": "/api/webhook"
+        }
+    ]
+}

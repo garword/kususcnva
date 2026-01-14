@@ -8,7 +8,13 @@ session.json
 auth_cookies.json
 auth_user_agent.txt
 catatandb.md
-*.json
-!package.json
-!tsconfig.json
-!.vercel/project.json
+# Sensitive Data
+session.json
+auth_cookies.json
+*.json.log
+
+# Configs (Allowed)
+# package.json
+# tsconfig.json
+# vercel.json
+
