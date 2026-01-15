@@ -1203,6 +1203,11 @@ bot.hears("👤 Profil Saya", async (ctx) => {
     );
 
     const user = userRes.rows[0];
+
+    // FIX: Check if user exists
+    if (!user) {
+        return ctx.reply("❌ Data user tidak ditemukan. Silakan ketik /start untuk mendaftar.", { parse_mode: "HTML" });
+    }
     const sub = subRes.rows[0]; // Ambil yang pertama jika ada (Single Active Sub rule)
 
     let status = "❌ Free / Inactive";
