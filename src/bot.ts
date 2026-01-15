@@ -637,6 +637,16 @@ async function handleActivation(ctx: any, emailInput: string) {
     try {
         // 0. Ambil Data User (Produk & Poin)
         const userRes = await sql("SELECT selected_product_id, referral_points, email as saved_email FROM users WHERE id = ?", [userId]);
+
+        // FIX: Check if user exists in DB
+        if (userRes.rows.length === 0) {
+            return ctx.reply(
+                "⛔ <b>User Tidak Ditemukan!</b>\n\n" +
+                "Silakan ketik /start terlebih dahulu untuk mendaftar.",
+                { parse_mode: "HTML" }
+            );
+        }
+
         const user = userRes.rows[0];
         const selectedProd = user.selected_product_id;
         const savedEmail = user.saved_email;
