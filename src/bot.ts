@@ -54,8 +54,8 @@ const isAdmin = (id: number) => id === ADMIN_ID;
 // Reply Keyboard (Menu Utama Tahan Lama)
 const mainMenu = new Keyboard()
     .text("🎁 Menu Paket").text("👤 Profil Saya").row()
-    .text("📖 Panduan").text("👨‍💻 Admin Panel").row()
-    .text("📊 Cek Slot").text("💸 Donasi") // Added Donasi Button
+    .text("📖 Panduan").text("🔑 Lihat Kode").row()
+    .text("📊 Cek Slot").text("💸 Donasi").row()
     .resized();
 
 // ============================================================
@@ -225,7 +225,76 @@ bot.hears("💸 Donasi", async (ctx) => {
     }
 });
 
-// Admin Command: Set Donasi (Link Mode)
+// Handler: Lihat Kode Button (Active Subscribers Only)
+bot.hears("🔑 Lihat Kode", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    try {
+        // 1. Check if user has active subscription
+        const subRes = await sql(`
+            SELECT s.*, p.name as plan_name 
+            FROM subscriptions s 
+            JOIN products p ON s.product_id = p.id 
+            WHERE s.user_id = ? AND s.status = 'active' AND s.end_date > datetime('now', '+7 hours')
+        `, [userId]);
+
+        if (subRes.rows.length === 0) {
+            // No active subscription
+            return ctx.reply(
+                "⛔ <b>Akses Ditolak!</b>\n\n" +
+                "Fitur ini hanya untuk member dengan langganan <b>AKTIF</b>.\n\n" +
+                "📌 <b>Status Anda:</b> Tidak ada langganan aktif.\n\n" +
+                "💡 <b>Solusi:</b>\n" +
+                "1. Pilih paket di Menu Paket.\n" +
+                "2. Aktivasi dengan /aktivasi email@anda.com\n" +
+                "3. Tunggu proses invite selesai.\n\n" +
+                "<i>Atau perpanjang langganan jika sudah expired.</i>",
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // 2. Get invite code from settings
+        const codeRes = await sql("SELECT value FROM settings WHERE key = 'canva_invite_code'");
+
+        if (codeRes.rows.length === 0 || !codeRes.rows[0].value) {
+            return ctx.reply(
+                "⏳ <b>Kode Belum Tersedia</b>\n\n" +
+                "Sistem belum memiliki kode invite.\n" +
+                "Kode akan tersedia setelah proses invite berjalan.\n\n" +
+                "Silakan coba lagi nanti atau hubungi admin.",
+                { parse_mode: "HTML" }
+            );
+        }
+
+        const inviteCode = codeRes.rows[0].value as string;
+        const sub = subRes.rows[0];
+        const endDateStr = sub.end_date as string;
+        const endDate = new Date(endDateStr.includes('T') ? endDateStr : endDateStr.replace(' ', 'T') + 'Z');
+
+        // 3. Format and send code
+        const keyboard = new InlineKeyboard()
+            .url("🔗 Buka Halaman Join", "https://www.canva.com/class/join");
+
+        await ctx.reply(
+            `🔑 <b>KODE AKSES CANVA</b>\n\n` +
+            `📋 <b>Kode:</b> <code>${inviteCode}</code>\n\n` +
+            `<b>Cara Pakai:</b>\n` +
+            `1. Klik tombol di bawah untuk buka halaman Join.\n` +
+            `2. Masukkan kode di atas.\n` +
+            `3. Klik Join/Gabung.\n\n` +
+            `📅 <b>Langganan Anda:</b> ${sub.plan_name}\n` +
+            `⏳ <b>Expired:</b> ${TimeUtils.format(endDate)}\n\n` +
+            `⚠️ <i>Jangan bagikan kode ini ke orang lain!</i>`,
+            { parse_mode: "HTML", reply_markup: keyboard }
+        );
+
+    } catch (e: any) {
+        console.error("Error Lihat Kode:", e);
+        await ctx.reply(`❌ Error: ${e.message}`);
+    }
+});
+
 bot.command("setdonasi", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
 

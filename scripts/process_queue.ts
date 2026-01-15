@@ -428,6 +428,17 @@ async function runPuppeteerQueue() {
                     if (code) {
                         globalInviteData = { success: true, message: code };
                         console.log(`   [DEBUG] Success! Class Code retrieved: ${code}`);
+
+                        // Save code to DB for "Lihat Kode" button
+                        try {
+                            await sql(
+                                "INSERT INTO settings (key, value) VALUES ('canva_invite_code', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                                [code, code]
+                            );
+                            console.log(`   💾 Saved Invite Code to DB: ${code}`);
+                        } catch (dbErr) {
+                            console.error("   ⚠️ Failed to save code to DB:", dbErr);
+                        }
                     } else {
                         throw new Error("Clipboard empty & UI scrape failed");
                     }
@@ -507,8 +518,8 @@ async function runPuppeteerQueue() {
                             }
                         }
 
-                        // Mark Active
-                        await sql(`UPDATE users SET status = 'active' WHERE id = ?`, [userId]);
+                        // Mark Active AND Save Node Assignment
+                        await sql(`UPDATE users SET status = 'active', assigned_node_id = ? WHERE id = ?`, [selectedAccount.id, userId]);
                         successInvites++;
 
                     } catch (distErr) {
