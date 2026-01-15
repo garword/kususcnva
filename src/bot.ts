@@ -116,7 +116,17 @@ bot.use(async (ctx, next) => {
     // 1. Exemption: Admin
     if (isAdmin(userId)) return next();
 
-    // 2. Exemption: Start Command (Login/Register)
+    // 2. Exemption: Ignore Service Messages (Join/Left Group)
+    if (ctx.message?.new_chat_members || ctx.message?.left_chat_member) return next();
+
+    // 3. Exemption/Relaxation: Group Chat Logic
+    // Only enforce strict check in Groups if user is explicitly using a command
+    if (ctx.chat?.type !== 'private') {
+        const isCommand = ctx.message?.text?.startsWith('/') || ctx.callbackQuery;
+        if (!isCommand) return next();
+    }
+
+    // 4. Exemption: Start Command (Login/Register)
     if (ctx.message?.text?.startsWith('/start')) return next();
 
     // 3. Exemption: "Saya Sudah Join" callback
