@@ -1346,7 +1346,8 @@ const showAdminPanel = async (ctx: MyContext) => {
         .text("☠️ Force Expire", "adm_help_exp").text("🗑️ Menu Hapus", "adm_menu_del").row()
         .text("🧪 Test Auto-Invite", "test_invite").text("🦶 Test Auto-Kick", "test_kick").row()
         .text("🍪 Status Cookie", "adm_cookie").text("🏭 List Accounts", "adm_list_accounts").row()
-        .text("💾 Database Tools", "adm_db_menu").text("📋 List Channel", "adm_list_ch").row().text("➕ Add Point Manual", "adm_help_addpoint");
+        .text("💾 Database Tools", "adm_db_menu").text("📋 List Channel", "adm_list_ch").row()
+        .text("➕ Add Point Manual", "adm_help_addpoint").text("💸 Set Donasi", "adm_set_donasi").row();
 
     await ctx.reply(
         `<b>Panel Admin Super v2.0</b>\n\n` +
@@ -2759,5 +2760,20 @@ bot.catch((err) => {
 bot.callbackQuery("adm_help_addpoint", async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     await ctx.reply("➕ <b>Tambah Poin Manual:</b>\n\nCommand: <code>/addpoint [ID_TELEGRAM]|[JUMLAH]</code>\n\nContoh: <code>/addpoint 1234567890|100</code>\n(Tanpa spasi di antara garis tegak)", { parse_mode: "HTML" });
+    await ctx.answerCallbackQuery();
+});
+
+// Helper: Set Donasi Guide
+bot.callbackQuery("adm_set_donasi", async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    await ctx.reply(
+        "💸 <b>Set Link Donasi:</b>\n\n" +
+        "Command: <code>/setdonasi [URL]</code>\n\n" +
+        "<b>Contoh:</b>\n" +
+        "<code>/setdonasi https://saweria.co/username</code>\n\n" +
+        "Atau reply pesan yang berisi URL dengan <code>/setdonasi</code>\n\n" +
+        "User akan melihat tombol Donasi dengan link yang Anda set.",
+        { parse_mode: "HTML" }
+    );
     await ctx.answerCallbackQuery();
 });
