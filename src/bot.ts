@@ -55,8 +55,7 @@ const isAdmin = (id: number) => id === ADMIN_ID;
 const mainMenu = new Keyboard()
     .text("🎁 Menu Paket").text("👤 Profil Saya").row()
     .text("📖 Panduan").text("👨‍💻 Admin Panel").row()
-    .text("📊 Cek Slot").text("💸 Donasi").row() // Added Donasi Button
-    .text("🔑 Liat Kode") // New Feature
+    .text("📊 Cek Slot").text("💸 Donasi") // Added Donasi Button
     .resized();
 
 // ============================================================
@@ -223,80 +222,6 @@ bot.hears("💸 Donasi", async (ctx) => {
         }
     } catch (e) {
         console.error("Error donation:", e);
-    }
-});
-
-// Handler: Liat Kode Feature
-bot.hears("🔑 Liat Kode", async (ctx) => {
-    try {
-        const userId = ctx.from?.id || 0;
-
-        // 1. Check if user is active member
-        const memCheck = await sql(`SELECT status, end_date FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
-
-        let isExpired = false;
-        if (memCheck.rows.length > 0) {
-            // Optional: Strict Date Check
-            // const endDate = new Date((memCheck.rows[0].end_date as string).replace(' ', 'T') + 'Z');
-            // ...
-        } else {
-            isExpired = true;
-        }
-
-        if (isExpired) {
-            return ctx.reply(
-                "❌ <b>Akses Ditolak!</b>\n\n" +
-                "Masa aktif langganan Anda sudah habis atau Anda belum berlangganan.\n" +
-                "Silakan perpanjang langganan untuk melihat kode.",
-                { parse_mode: "HTML" }
-            );
-        }
-
-        // 2. Get Account ID (Node)
-        const subRes = await sql(`SELECT account_id FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
-        const accountId = subRes.rows[0]?.account_id;
-
-        if (!accountId) {
-            return ctx.reply(
-                "⚠️ <b>Data Node Tidak Ditemukan!</b>\n\n" +
-                "Anda mungkin member lama sebelum fitur ini ada.\n" +
-                "Silakan hubungi admin untuk update data akun.",
-                { parse_mode: "HTML" }
-            );
-        }
-
-        // 3. Get Invite Code for that Node
-        const accRes = await sql(`SELECT invite_code, email FROM canva_accounts WHERE id = ?`, [accountId]);
-
-        if (accRes.rows.length === 0) {
-            return ctx.reply("❌ Node Error: Akun Canva tidak ditemukan.");
-        }
-
-        const inviteCode = accRes.rows[0].invite_code;
-        // const nodeEmail = accRes.rows[0].email;
-
-        if (!inviteCode) {
-            return ctx.reply(
-                "⚠️ <b>Kode Belum Tersedia!</b>\n\n" +
-                "Bot belum mengambil kode terbaru untuk tim ini.\n" +
-                "Harap tunggu proses invite otomatis berikutnya atau hubungi admin.",
-                { parse_mode: "HTML" }
-            );
-        }
-
-        // 4. Send Code
-        await ctx.reply(
-            `🔑 <b>KODE TIM CANVA</b>\n\n` +
-            `Berikut kode untuk Join ke Tim:\n` +
-            `<code>${inviteCode}</code>\n\n` +
-            `🔗 <b>Link Join:</b> <a href="https://www.canva.com/class/join">Buka Disini</a>\n` +
-            `ℹ️ <i>Kode ini khusus untuk member aktif. Jangan disebar!</i>`,
-            { parse_mode: "HTML", link_preview_options: { is_disabled: true } }
-        );
-
-    } catch (e: any) {
-        console.error("Error Liat Kode:", e);
-        await ctx.reply("❌ Terjadi kesalahan sistem.");
     }
 });
 
