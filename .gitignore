@@ -12,6 +12,7 @@ catatandb.md
 session.json
 auth_cookies.json
 *.json.log
+www.canva.com*.json
 
 # Configs (Allowed)
 # package.json

@@ -454,30 +454,36 @@ async function runPuppeteerQueue() {
 
                     console.log(`   📧 Sending to ${email}...`);
 
+                    // 1. Validasi Invite Code Global
                     try {
-                        // DB UPDATE (Subscription + Active Status)
-                        // Check for ANY active subscription
+                        // UPDATE INVITE CODE KE DB (Canva Accounts)
+                        if (globalInviteData.message && !globalInviteData.message.startsWith("http")) {
+                            await sql(`UPDATE canva_accounts SET invite_code = ?, last_used = datetime('now', '+7 hours') WHERE id = ?`, [globalInviteData.message, selectedAccount.id]);
+                            console.log(`   💾 Invite Code Saved to DB for Node ${selectedAccount.id}: ${globalInviteData.message}`);
+                        }
+
+                        // DB UPDATE (Subscription + Active Status + ACCOUNT ID)
                         const activeSubRes = await sql(`SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
+                        const accountId = selectedAccount.id;
 
                         if (activeSubRes.rows.length > 0) {
                             // Update existing (Extend/Replace)
                             const existingId = activeSubRes.rows[0].id;
                             const startStr = TimeUtils.getWIBISOString();
 
-                            // Important: For consistency, verify if we should just ADD to existing end_date or Replace.
-                            // The user previous request implies simple replacement/extension logic in queue is OK for now, 
-                            // as strict extension is handled in /aktivasi command. 
-                            // Here we just accept the duration from queue.
-
-                            await sql(`UPDATE subscriptions SET end_date = ?, product_id = ?, start_date = ? WHERE id = ?`, [endDateStr, prodId, startStr, existingId]);
-                            console.log(`   🔄 Updated existing subscription ${existingId}`);
+                            await sql(`UPDATE subscriptions SET end_date = ?, product_id = ?, start_date = ?, account_id = ? WHERE id = ?`, [endDateStr, prodId, startStr, accountId, existingId]);
+                            console.log(`   🔄 Updated sub ${existingId} -> Node ${accountId}`);
                         } else {
                             // Insert New
                             const subId = `sub_${Date.now()}_${userId}`;
                             const startStr = TimeUtils.getWIBISOString();
                             const endStr = endDateObj.toISOString().replace('T', ' ').substring(0, 19);
-                            await sql(`INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'active')`, [subId, userId, prodId, startStr, endStr]);
-                            console.log(`   ➕ Created new subscription ${subId}`);
+
+                            await sql(
+                                `INSERT INTO subscriptions (id, user_id, product_id, start_date, end_date, status, account_id) VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+                                [subId, userId, prodId, startStr, endStr, accountId]
+                            );
+                            console.log(`   ➕ Created sub ${subId} -> Node ${accountId}`);
                         }
 
                         // NOTIFY USER
@@ -496,10 +502,8 @@ async function runPuppeteerQueue() {
                                 if (!msgId) msgId = await sendTelegram(userId.toString(), text, { disable_web_page_preview: true });
                             }
 
-                            // Auto-Delete logic (DB Queue)
+                            // Auto-Delete logic
                             if (msgId) {
-                                // Use DB Time to avoid Clock Skew (User Time vs DB Time)
-                                // We add 2 minutes to the current DB WIB time
                                 await sql(`
                                     INSERT INTO message_queue (chat_id, message_id, delete_at) 
                                     VALUES (?, ?, datetime('now', '+7 hours', '+2 minutes'))
@@ -521,6 +525,7 @@ async function runPuppeteerQueue() {
                 failInvites += pendingInvites.rows.length;
             }
         }
+
 
         // ========================================================================
         // PROCESS MESSAGE DELETION QUEUE

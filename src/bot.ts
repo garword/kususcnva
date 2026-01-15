@@ -55,7 +55,8 @@ const isAdmin = (id: number) => id === ADMIN_ID;
 const mainMenu = new Keyboard()
     .text("🎁 Menu Paket").text("👤 Profil Saya").row()
     .text("📖 Panduan").text("👨‍💻 Admin Panel").row()
-    .text("📊 Cek Slot").text("💸 Donasi") // Added Donasi Button
+    .text("📊 Cek Slot").text("💸 Donasi").row() // Added Donasi Button
+    .text("🔑 Liat Kode") // New Feature
     .resized();
 
 // ============================================================
@@ -194,34 +195,29 @@ bot.hears("📖 Panduan", async (ctx) => {
 
 // Handler: Donasi Button
 // Handler: Donasi Button
+// Handler: Donasi Button (Link Mode)
 bot.hears("💸 Donasi", async (ctx) => {
     try {
-        const res = await sql("SELECT value FROM settings WHERE key = 'custom_donation_msg'");
-        const donasiMsg = res.rows.length > 0 ? res.rows[0].value : null;
+        const res = await sql("SELECT value FROM settings WHERE key = 'donation_link_url'");
+        const donationUrl = res.rows.length > 0 ? res.rows[0].value : null;
 
-        if (donasiMsg) {
-            // Try Parse JSON (New Format)
-            try {
-                const data = JSON.parse(donasiMsg as string);
-                if (data.type === 'photo') {
-                    await ctx.replyWithPhoto(data.file_id, {
-                        caption: data.caption || "",
-                        parse_mode: "HTML"
-                    });
-                } else {
-                    // JSON but text type
-                    await ctx.reply(data.content, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+        if (donationUrl) {
+            const donasiKeyboard = new InlineKeyboard()
+                .url("💸 Klik Disini Untuk Donasi", donationUrl as string);
+
+            await ctx.reply(
+                "Silakan jika ingin berdonasi bisa klik button Donasi di bawah ini:",
+                {
+                    parse_mode: "HTML",
+                    reply_markup: donasiKeyboard
                 }
-            } catch (e) {
-                // Fallback: Legacy Plain Text
-                await ctx.reply(donasiMsg as string, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
-            }
+            );
         } else {
             // Default Message if not set
             await ctx.reply(
                 "💸 <b>Menu Donasi</b>\n\n" +
-                "Saat ini pesan donasi belum diatur oleh Admin.\n" +
-                "Silakan hubungi admin untuk info lebih lanjut.",
+                "Link donasi belum diatur oleh Admin.\n" +
+                "Silakan hubungi admin.",
                 { parse_mode: "HTML" }
             );
         }
@@ -230,55 +226,121 @@ bot.hears("💸 Donasi", async (ctx) => {
     }
 });
 
-// Admin Command: Set Donasi (Reply Mode)
-// Admin Command: Set Donasi (Reply Mode)
+// Handler: Liat Kode Feature
+bot.hears("🔑 Liat Kode", async (ctx) => {
+    try {
+        const userId = ctx.from?.id || 0;
+
+        // 1. Check if user is active member
+        const memCheck = await sql(`SELECT status, end_date FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
+
+        let isExpired = false;
+        if (memCheck.rows.length > 0) {
+            // Optional: Strict Date Check
+            // const endDate = new Date((memCheck.rows[0].end_date as string).replace(' ', 'T') + 'Z');
+            // ...
+        } else {
+            isExpired = true;
+        }
+
+        if (isExpired) {
+            return ctx.reply(
+                "❌ <b>Akses Ditolak!</b>\n\n" +
+                "Masa aktif langganan Anda sudah habis atau Anda belum berlangganan.\n" +
+                "Silakan perpanjang langganan untuk melihat kode.",
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // 2. Get Account ID (Node)
+        const subRes = await sql(`SELECT account_id FROM subscriptions WHERE user_id = ? AND status = 'active'`, [userId]);
+        const accountId = subRes.rows[0]?.account_id;
+
+        if (!accountId) {
+            return ctx.reply(
+                "⚠️ <b>Data Node Tidak Ditemukan!</b>\n\n" +
+                "Anda mungkin member lama sebelum fitur ini ada.\n" +
+                "Silakan hubungi admin untuk update data akun.",
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // 3. Get Invite Code for that Node
+        const accRes = await sql(`SELECT invite_code, email FROM canva_accounts WHERE id = ?`, [accountId]);
+
+        if (accRes.rows.length === 0) {
+            return ctx.reply("❌ Node Error: Akun Canva tidak ditemukan.");
+        }
+
+        const inviteCode = accRes.rows[0].invite_code;
+        // const nodeEmail = accRes.rows[0].email;
+
+        if (!inviteCode) {
+            return ctx.reply(
+                "⚠️ <b>Kode Belum Tersedia!</b>\n\n" +
+                "Bot belum mengambil kode terbaru untuk tim ini.\n" +
+                "Harap tunggu proses invite otomatis berikutnya atau hubungi admin.",
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // 4. Send Code
+        await ctx.reply(
+            `🔑 <b>KODE TIM CANVA</b>\n\n` +
+            `Berikut kode untuk Join ke Tim:\n` +
+            `<code>${inviteCode}</code>\n\n` +
+            `🔗 <b>Link Join:</b> <a href="https://www.canva.com/class/join">Buka Disini</a>\n` +
+            `ℹ️ <i>Kode ini khusus untuk member aktif. Jangan disebar!</i>`,
+            { parse_mode: "HTML", link_preview_options: { is_disabled: true } }
+        );
+
+    } catch (e: any) {
+        console.error("Error Liat Kode:", e);
+        await ctx.reply("❌ Terjadi kesalahan sistem.");
+    }
+});
+
+// Admin Command: Set Donasi (Link Mode)
 bot.command("setdonasi", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
 
+    const input = (ctx.match as string || "").trim();
     const reply = ctx.message?.reply_to_message;
-    // Check if replying to something valid
-    if (!reply) {
+
+    let targetUrl = "";
+
+    // 1. Check Input Argument
+    if (input.startsWith("http")) {
+        targetUrl = input;
+    }
+    // 2. Check Reply Text
+    else if (reply && "text" in reply && reply.text?.startsWith("http")) {
+        targetUrl = reply.text;
+    }
+
+    if (!targetUrl) {
         return ctx.reply(
-            "⚠️ <b>Cara Pakai Salah!</b>\n\n" +
-            "1. Kirim Gambar (QRIS) atau Teks pesan donasi.\n" +
-            "2. Reply pesan tersebut dengan <code>/setdonasi</code>\n\n" +
-            "<i>Fitur ini mendukung Teks, HTML, dan Gambar/Foto.</i>",
+            "⚠️ <b>Format Salah!</b>\n\n" +
+            "Fitur Donasi sekarang menggunakan <b>Link / URL</b>.\n\n" +
+            "Cara Pakai:\n" +
+            "• <code>/setdonasi https://saweria.co/xxx</code>\n" +
+            "• Atau Reply pesan berisi link dengan <code>/setdonasi</code>",
             { parse_mode: "HTML" }
         );
     }
 
-    let storageValue = "";
-
-    // 1. Check Photo
-    if (reply.photo && reply.photo.length > 0) {
-        const photo = reply.photo[reply.photo.length - 1]; // Get highest quality
-        const payload = {
-            type: "photo",
-            file_id: photo.file_id,
-            caption: reply.caption || reply.text || "" // Use caption if photo, or text if mixed (rare)
-        };
-        storageValue = JSON.stringify(payload);
-    }
-    // 2. Check Text
-    else if (reply.text) {
-        const payload = {
-            type: "text",
-            content: reply.text
-        };
-        storageValue = JSON.stringify(payload);
-    }
-    // 3. Fallback
-    else {
-        return ctx.reply("❌ Jenis pesan tidak didukung. Mohon reply Teks atau Gambar.");
-    }
-
-    // Save to DB
+    // Save to DB (Plain String URL)
     try {
         await sql(
-            "INSERT INTO settings (key, value) VALUES ('custom_donation_msg', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
-            [storageValue, storageValue]
+            "INSERT INTO settings (key, value) VALUES ('donation_link_url', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [targetUrl, targetUrl]
         );
-        await ctx.reply("✅ <b>Pesan Donasi Berhasil Disimpan!</b>\nSekarang support QRIS/Gambar.", { parse_mode: "HTML" });
+        await ctx.reply(
+            `✅ <b>Link Donasi Disimpan!</b>\n\n` +
+            `🔗 URL: ${targetUrl}\n` +
+            `Tombol "Donasi" sekarang akan mengarah ke link tersebut.`,
+            { parse_mode: "HTML", link_preview_options: { is_disabled: true } }
+        );
     } catch (e: any) {
         await ctx.reply(`❌ Error DB: ${e.message}`);
     }
