@@ -106,6 +106,82 @@ async function checkMember(userId: number, ctx: MyContext): Promise<boolean> {
     return true;
 }
 
+// ============================================================
+// STRICT FORCE SUBSCRIBE MIDDLEWARE
+// ============================================================
+bot.use(async (ctx, next) => {
+    const userId = ctx.from?.id;
+    if (!userId) return next();
+
+    // 1. Exemption: Admin
+    if (isAdmin(userId)) return next();
+
+    // 2. Exemption: Start Command (Login/Register)
+    if (ctx.message?.text?.startsWith('/start')) return next();
+
+    // 3. Exemption: "Saya Sudah Join" callback
+    if (ctx.callbackQuery?.data === 'check_sub') return next();
+
+    // 4. Force Check
+    const isJoined = await checkMember(userId, ctx);
+    if (isJoined) {
+        return next();
+    }
+
+    // 5. Block & Show Channels
+    const channels = await getForceSubChannels();
+    const keyboard = new InlineKeyboard();
+    let msg = "⛔ <b>Akses Ditolak!</b>\n\nAnda wajib join channel berikut untuk menggunakan bot:\n\n";
+
+    channels.forEach((raw, i) => {
+        const parts = raw.split('|');
+        const idOrName = parts[0].trim();
+        const link = parts[1] ? parts[1].trim() : "";
+
+        let label = `📢 Channel Wajib ${i + 1}`;
+        let url = link;
+
+        // Auto-detect public username if no link provided
+        if (!url && idOrName.startsWith('@')) {
+            url = `https://t.me/${idOrName.replace('@', '')}`;
+            label = idOrName;
+        }
+
+        if (url) {
+            keyboard.url(label, url).row();
+        } else {
+            msg += `• ${idOrName}\n`;
+        }
+    });
+
+    keyboard.text("✅ Saya Sudah Join", "check_sub");
+
+    // Reply mechanism
+    // If callback, answer it first to stop loading animation
+    if (ctx.callbackQuery) {
+        try { await ctx.answerCallbackQuery("⛔ Akses Ditolak: Wajib Join Channel!"); } catch { }
+    }
+
+    // Send protection message
+    await ctx.reply(msg, { parse_mode: "HTML", reply_markup: keyboard });
+
+    // STOP EXECUTION (Do not call next)
+});
+
+// Handler: Check Subscription Button
+bot.callbackQuery("check_sub", async (ctx) => {
+    const userId = ctx.from.id;
+    const isJoined = await checkMember(userId, ctx);
+
+    if (isJoined) {
+        await ctx.answerCallbackQuery("✅ Terimakasih!");
+        try { await ctx.deleteMessage(); } catch { }
+        await ctx.reply("✅ <b>Akses Diterima!</b>\nSilakan gunakan bot kembali.", { parse_mode: "HTML" });
+    } else {
+        await ctx.answerCallbackQuery({ text: "❌ Masih ada channel yang belum di-join!", show_alert: true });
+    }
+});
+
 // Admin Commands for Channels
 bot.command("set_channels", async (ctx) => {
     if (!isAdmin(ctx.from?.id || 0)) return;
