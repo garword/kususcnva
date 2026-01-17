@@ -119,11 +119,21 @@ bot.use(async (ctx, next) => {
     // 2. Exemption: Ignore Service Messages (Join/Left Group)
     if (ctx.message?.new_chat_members || ctx.message?.left_chat_member) return next();
 
-    // 3. Exemption/Relaxation: Group Chat Logic
-    // Only enforce strict check in Groups if user is explicitly using a command
+    // 3. Restriction: Private Chat Only (User Request: All commands must be private)
     if (ctx.chat?.type !== 'private') {
-        const isCommand = ctx.message?.text?.startsWith('/') || ctx.callbackQuery;
-        if (!isCommand) return next();
+        const text = ctx.message?.text || "";
+        const isCommand = text.startsWith('/') || ctx.callbackQuery || ["🎁 Menu Paket", "👤 Profil Saya", "📖 Panduan", "🔑 Lihat Kode", "📊 Cek Slot", "💸 Donasi"].includes(text);
+
+        if (isCommand) {
+            // Reply with button to private chat
+            try {
+                const keyboard = new InlineKeyboard().url("➡️ Pindah ke Private Chat", `https://t.me/${ctx.me.username}?start=group`);
+                await ctx.reply("⛔ <b>Akses Ditolak!</b>\nMohon gunakan bot di Private Chat.", { parse_mode: "HTML", reply_markup: keyboard });
+            } catch (ignore) { }
+            return; // STOP EXECUTION (Block command)
+        }
+        // If not a command (random chat), just ignore silent
+        return;
     }
 
     // 4. Exemption: Start Command (Login/Register)
