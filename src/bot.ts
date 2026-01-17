@@ -117,7 +117,7 @@ bot.use(async (ctx, next) => {
     if (isAdmin(userId)) return next();
 
     // 2. Exemption: Ignore Service Messages (Join/Left Group)
-    if (ctx.message?.new_chat_members || ctx.message?.left_chat_member) return next();
+    if (ctx.message?.new_chat_members || ctx.message?.left_chat_member) return;
 
     // 3. Restriction: Private Chat Only (User Request: All commands must be private)
     if (ctx.chat?.type !== 'private') {
@@ -125,9 +125,13 @@ bot.use(async (ctx, next) => {
         const isCommand = text.startsWith('/') || ctx.callbackQuery || ["🎁 Menu Paket", "👤 Profil Saya", "📖 Panduan", "🔑 Lihat Kode", "📊 Cek Slot", "💸 Donasi"].includes(text);
 
         if (isCommand) {
+            // Delete user's command message to clean up spam
+            try { await ctx.deleteMessage(); } catch (e) { }
+
             // Reply with button to private chat
             try {
-                const keyboard = new InlineKeyboard().url("➡️ Pindah ke Private Chat", `https://t.me/${ctx.me.username}?start=group`);
+                const username = ctx.me?.username || "CanvaProGratisFreeBot";
+                const keyboard = new InlineKeyboard().url("➡️ Pindah ke Private Chat", `https://t.me/${username}?start=group`);
                 await ctx.reply("⛔ <b>Akses Ditolak!</b>\nMohon gunakan bot di Private Chat.", { parse_mode: "HTML", reply_markup: keyboard });
             } catch (ignore) { }
             return; // STOP EXECUTION (Block command)
