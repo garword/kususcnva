@@ -431,11 +431,19 @@ async function runPuppeteerQueue() {
 
                         // Save code to DB for "Lihat Kode" button
                         try {
+                            // 1. Save Global (Legacy/Fallback)
                             await sql(
                                 "INSERT INTO settings (key, value) VALUES ('canva_invite_code', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
                                 [code, code]
                             );
-                            console.log(`   💾 Saved Invite Code to DB: ${code}`);
+
+                            // 2. Save to Specific Account (Node)
+                            await sql(
+                                "UPDATE canva_accounts SET invite_code = ?, last_used = CURRENT_TIMESTAMP WHERE id = ?",
+                                [code, selectedAccount.id]
+                            );
+
+                            console.log(`   💾 Saved Invite Code to DB (Global & Node ${selectedAccount.id}): ${code}`);
                         } catch (dbErr) {
                             console.error("   ⚠️ Failed to save code to DB:", dbErr);
                         }

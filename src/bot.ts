@@ -354,20 +354,42 @@ bot.hears("🔑 Lihat Kode", async (ctx) => {
             );
         }
 
-        // 2. Get invite code from settings
-        const codeRes = await sql("SELECT value FROM settings WHERE key = 'canva_invite_code'");
+        // 2. Get Invite Code Logic (Dynamic based on Node)
+        // Check if user has assigned node
+        const userNodeRes = await sql("SELECT assigned_node_id FROM users WHERE id = ?", [userId]);
+        const assignedNodeId = userNodeRes.rows[0]?.assigned_node_id as number;
 
-        if (codeRes.rows.length === 0 || !codeRes.rows[0].value) {
+        let inviteCode = "";
+        let nodeInfo = "";
+
+        if (assignedNodeId) {
+            // Fetch code from specific node
+            const nodeRes = await sql("SELECT invite_code, email FROM canva_accounts WHERE id = ?", [assignedNodeId]);
+            if (nodeRes.rows.length > 0 && nodeRes.rows[0].invite_code) {
+                inviteCode = nodeRes.rows[0].invite_code as string;
+                // Obscure email for security (e.g. "team...1@gmail.com")
+                // nodeInfo = `\n🏢 <b>Node:</b> ${nodeRes.rows[0].email}`; 
+            }
+        }
+
+        // Fallback to Global Settings if node code not found
+        if (!inviteCode) {
+            const codeRes = await sql("SELECT value FROM settings WHERE key = 'canva_invite_code'");
+            if (codeRes.rows.length > 0 && codeRes.rows[0].value) {
+                inviteCode = codeRes.rows[0].value as string;
+            }
+        }
+
+        if (!inviteCode) {
             return ctx.reply(
                 "⏳ <b>Kode Belum Tersedia</b>\n\n" +
-                "Sistem belum memiliki kode invite.\n" +
-                "Kode akan tersedia setelah proses invite berjalan.\n\n" +
+                "Sistem belum memiliki kode invite terbaru untuk Node Anda.\n" +
+                "Kode akan update otomatis saat ada invite baru.\n\n" +
                 "Silakan coba lagi nanti atau hubungi admin.",
                 { parse_mode: "HTML" }
             );
         }
 
-        const inviteCode = codeRes.rows[0].value as string;
         const sub = subRes.rows[0];
         const endDateStr = sub.end_date as string;
         const endDate = new Date(endDateStr.includes('T') ? endDateStr : endDateStr.replace(' ', 'T') + 'Z');
